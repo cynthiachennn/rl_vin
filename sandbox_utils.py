@@ -142,11 +142,11 @@ class Agent():
 
     def compute_action(self, current_state):
         if np.random.uniform(0, 1) < self.exploration_prob:
-            print('random')
+            # print('random')
             return np.random.choice(range(self.n_actions))
         # q_values = self.model.forward(self.state)
-        print('policy')
-        q_values = self.model.map_qs(self.iv_mixed, self.config.k)
+        # print('policy')
+        # q_values = self.model.map_qs(self.iv_mixed, self.config.k)
         # action = np.max(self.model.fc(q_values[0, :, current_state[0], current_state[1]]))
         _, action = self.model.forward(self.iv_mixed, current_state[0], current_state[1], self.config.k)
         return np.argmax(action.detach().numpy())
@@ -214,7 +214,8 @@ class Agent():
         # sample from memory buffer
         batch = np.random.permutation(self.memory_buffer)
         batch = batch[:batch_size]
-        q_target = np.zeros((self.config.imsize, self.config.imsize, 8))
+        avg_loss = []
+        # q_target = np.zeros((self.config.imsize, self.config.imsize, 8))
 
         for experience in batch: # experience is a singular action
             # problem: i'm doing this per experience so not taking advantage of being able to use
@@ -225,15 +226,18 @@ class Agent():
             optimizer.zero_grad()
             state_x, state_y = experience['current_state']
             q_values = self.model.map_qs(self.iv_mixed, self.config.k) # equivalent to "self.forward?"
-            q_target = experience['reward'] + self.gamma * np.max(q_target[experience['next_state']])
             # ^do i need this if i already have self.q_values from learn_world? how often
             # should i update the q_values
-            pred, output = self.model.fc(q_values[0, :, state_x, state_y]), torch.tensor(q_target[experience['current_state']])
-            print(pred.shape)
+            # q_target = experience['reward'] + self.gamma * np.max(q_target[experience['next_state']])
+            # also not sure if i should redo q_target during training but i dont think so..
+            pred, output = self.model.fc(q_values[0, :, state_x, state_y]), torch.tensor(q_target[state_x][state_y])
+            # print(pred[experience['action']], output[experience['action']])
             
             loss = criterion(pred, output)
+            avg_loss.append(loss.item())
             loss.backward()
-            optimizer.step()     
+            optimizer.step() 
+        print('average loss:', np.mean(avg_loss))
             
 def move(G, agent, current_state, action): # this is so we can input a guarenteed traj lol 
     next_state = G.sample_next_state(current_state, action)
