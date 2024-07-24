@@ -251,6 +251,38 @@ def move(G, agent, current_state, action): # this is so we can input a guarentee
     # then restart cycle/search from beginning
     current_state = next_state
 
+def get_q_target(agent, G):
+    episodes = 200
+    max_steps = 500
+    q_target = np.zeros((G.G.shape[0], 8)) # q val array = states x actions ?
+    agent.gamma = 0.75
 
+    def step(current_state, q_target):
+        action = agent.compute_action(G.get_coords(current_state))
+        next_state = G.sample_next_state(current_state, action)
+        reward = G.R[current_state][action]
+        q_target[current_state][action] = reward + agent.gamma * max(q_target[next_state])
+        # print('current state:', current_state)
+        # print('action:', action)
+        # print('reward', reward)
+        # print('q_value', q_values[current_state][action])
+        return next_state, q_target
+
+    for i in range(episodes):
+        current_state = np.int64(np.random.randint(G.G.shape[0]))
+        for j in range(max_steps):
+            next_state, q_target = step(current_state, q_target)
+            current_state = next_state
+            if current_state == G.map_ind_to_state(G.target_x, G.target_y):
+                # print('goal reached!')
+                break
+
+    for state in range(G.G.shape[0]):
+        print('state:', state)
+        print(q_target[state])
+
+    [np.argmax(state) for state in q_target]
+
+    return q_target
             
          

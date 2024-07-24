@@ -41,40 +41,6 @@ episodes = 50
 max_steps = 500 # steps we wanna try before we give up on finding goal (computational bound)
 total_steps = 0
 
-
-# TRAIN (learn q func)
-def step(current_state, q_values):
-    action = agent.compute_action(G.get_coords(current_state))
-    next_state = G.sample_next_state(current_state, action)
-    reward = G.R[current_state][action]
-    q_values[current_state][action] = reward + agent.gamma * max(q_values[next_state])
-    # print('current state:', current_state)
-    # print('action:', action)
-    # print('reward', reward)
-    # print('q_value', q_values[current_state][action])
-    return next_state, q_values
-
-
-q_values = np.zeros((G.G.shape[0], 8)) # q val array = states x actions ?
-agent.gamma = 0.75
-current_state = G.map_ind_to_state(start[0], start[1])
-
-for i in range(episodes):
-    current_state = np.int64(np.random.randint(G.G.shape[0]))
-    for j in range(max_steps):
-        next_state, q_values = step(current_state, q_values)
-        current_state = next_state
-        if current_state == G.map_ind_to_state(goal[0], goal[1]):
-            print('goal reached!')
-            break
-
-for state in range(G.G.shape[0]):
-    print('state:', state)
-    print(q_values[state])
-
-[np.argmax(state) for state in q_values]
-# [np.int64(2), np.int64(2), np.int64(4), np.int64(6), np.int64(1), np.int64(1), np.int64(1)]
-
 # ACTUAL TRAIN W/ NN
 q_target = torch.zeros((config.imsize,config.imsize, 8))
 agent.gamma = 0.75
