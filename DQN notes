@@ -1,0 +1,57 @@
+DQN notes
+
+for each episode:
+    current_state = np.array
+    for step in max_iterations_per_ep:
+        /*
+            this sections just goes thru selected actions of the agent 
+            and simulates the experienced rewards and transitions based on
+            these actions
+        */
+        action = agent.compute_action(current_state)
+            /*
+                returns random or 
+                max(model.predict(current_state))  # optimal action
+            */
+        next_state, reward, done, _ = env.step(action)
+            /*
+                returns *ground truth* reward and next state
+            */
+        agent.store_episode(current_state, action, reward, next_state, done)
+            /*
+                the experienced results from the agent's actions are saved
+            */
+        if done: update_exploration_probability ; break
+            /*
+                if agent reaches a goal, end that episode and
+                it knows more so update so more likely to exploit
+            */
+        current_state = next_state
+
+    if step = batch_size (have sufficent experience in that episode for training)
+        /*
+            after the agent has x experiences, they look back on those experiences
+            and updates their predicted value compared to actual value
+        */
+        agent.train()
+            {
+                for experience in shuffle(memory_buffer[:batch_size]):
+                    q_current = predict(current_state)
+                        /*
+                            represents predicted q_table
+                        */
+                    q_target = reward
+                    if not "done":
+                        q_target = q_target(reward) + gamma * max(predict(next_state))
+                            /*
+                                this is the bellman equation
+                                q = q + discount * max (q')
+                                one caveat is that the projected future path (and opt. actions)
+                                uses current q func, which is not the underlying func.
+                            */
+                    q_current_state_[0][experience["action"]] = q_target
+                        /*
+                            this doesn't make sense to me. why are we replacing the q val of the
+                        */
+                        
+            }
