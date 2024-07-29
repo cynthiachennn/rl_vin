@@ -4,30 +4,19 @@ from domains.gridworld import *
 from generators.obstacle_gen import *
 from model import *
 
-np.random.seed(9)
+# np.random.seed(9)
 
 ### functions that make up the underlying code
 # first generate data
-def generate_gridworld(max_obs, dom_size):  # "random" gridworld
-    goal = [np.random.randint(dom_size[0]), np.random.randint(dom_size[1])]
-    obs = obstacles([8, 8], goal, max_obs) # can use obs.show() to show obs map - black = free, white = obstacle...
-    n_obs = obs.add_n_rand_obs(max_obs)
-    border_res = obs.add_border()
+def generate_gridworld(max_obs, dom_size):
+    border_res = False
+    while not border_res:
+        goal = [np.random.randint(dom_size[0]), np.random.randint(dom_size[1])]
+        obs = obstacles(dom_size, goal, max_obs) # can use obs.show() to show obs map - black/0 = free, white/1 = obstacle...
+        n_obs = obs.add_n_rand_obs(max_obs)
+        border_res = obs.add_border()
     im = obs.get_final()
     G = GridWorld(im, goal[0], goal[1])
-    return G
-
-def make_gridworld(): # predeterminate gridworld
-    goal = [3, 0]
-    img = [[0 for i in range(8)],
-           [0, 1, 0, 0, 0, 0, 1, 0],
-           [0, 1, 1, 1, 1, 1, 1, 0],
-           [0, 1, 0, 0, 0, 0, 1, 0],
-           [0, 1, 1, 1, 1, 1, 1, 0], 
-           [0, 1, 1, 0, 0, 0, 1, 0],
-           [0, 1, 0, 1, 1, 1, 1, 0],
-           [0 for i in range(8)]]
-    G = GridWorld(img, goal[0], goal[1])
     return G
 
 def get_sample(G, n_traj, i, dom_size):
@@ -56,14 +45,141 @@ def get_sample(G, n_traj, i, dom_size):
     visualize(G, states_xy[i])
     return X_current, S1_current, S2_current, Labels_current
 
-def visualize(G, start=None, goal=None): # ugh sorta redundant but not worth cleaning up
-    plt.ion()
+def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, dj_traj=None): # ugh sorta redundant but not worth cleaning up
+    # plt.ion()
     fig, ax = plt.subplots()
     implot = plt.imshow(G.image.T, cmap='Greys_r') # WHY T
     if start is not None:
         ax.plot(start[0], start[1], 'ro', label='Start')
     if goal is not None:
         ax.plot(goal[0], goal[1], 'go', label='Goal')
+    if targ_traj is not None:
+        ax.plot(targ_traj[:, 0], targ_traj[:, 1], c='b', label='Optimal Path')
+    if pred_traj is not None:
+        ax.plot(pred_traj[:, 0], pred_traj[:, 1], c='r', label='Predicted Path')
+    if dj_traj is not None:
+        ax.plot(dj_traj[:, 0], dj_traj[:, 1], c='g', label='Djikstra Path')
+    plt.show()
+    
+def get_trajectory(G, start, goal): # start and goal are state val not coords
+    _, W = G.get_graph_inv()
+    path = []
+    g_dense = W
+    g_masked = np.ma.masked_values(g_dense, 0)
+    g_sparse = csr_matrix(g_dense)
+    d, pred = dijkstra(g_sparse, indices=goal, return_predecessors=True)
+    states = trace_path(pred, goal, start) # what is pred oh nvm its the djkstra vals ok
+    states = np.flip(states, 0)# .reshape(states.shape[0])
+    for state in states:
+        # print(state.shape)
+        r, c = G.get_coords(np.int64(state[0]))
+        path.append((r, c))
+    return path
+
+def train_loop(config, G, agent):
+    episodes = 200
+    max_steps = 50 # steps we wanna try before we give up on finding goal (computational bound)
+    total_steps = 0
+
+    # ACTUAL TRAIN W/ NN
+    q_target = torch.zeros((config.imsize, config.imsize, 8))
+    agent.gamma = 0.75
+
+    for ep in range(episodes):
+        current_state = np.int64(np.random.randint(G.G.shape[0]))
+        done = False
+        agent.learn_world(G)
+        for step in range(max_steps):
+            total_steps = total_steps + 1
+            action = agent.compute_action(G.get_coords(current_state))
+            next_state = G.sample_next_state(current_state, action)
+            reward = G.R[current_state][action]
+            state_x, state_y = G.get_coords(current_state)
+            state_x_, state_y_ = G.get_coords(next_state)
+            q_target[state_x][state_y][action] = reward + agent.gamma * max(q_target[state_x_][state_y_])
+            if next_state == G.map_ind_to_state(G.target_x, G.target_y): 
+                done = True
+            agent.store_episode((state_x, state_y), action, reward, (state_x_, state_y_), done)
+            if done == True:
+                agent.update_exploration_prob(decay=0.001)
+                break
+            current_state = next_state
+        if total_steps >= config.batch_size: # should we still train if goal was never reached ? is that useful.
+            print('training...')
+            agent.train(config.batch_size, 
+                        criterion=nn.MSELoss(),  # used to be Cross Entropy, but I think that works better for multiclass/not good for predicing specific values. 
+                        optimizer=optim.RMSprop(agent.model.parameters(), 
+                                lr=config.lr, eps=1e-6), q_target=q_target)
+            total_steps = 0 # reset total steps so it can rebuild memory buffer??? im not sure.
+            agent.memory_buffer = [] # and reset memory buffer ? not sure. 
+    return agent, q_target
+            
+def get_policy(agent, q_target):
+    q_values = agent.q_values
+    pred_q = [agent.model.fc(q_values[0, :, i, j]).detach().numpy() for i in range(agent.config.imsize) for j in range(agent.config.imsize)]
+    # q_final = [agent.model.fc(q_values[0, :, j, i]).detach().numpy() for i in range(config.imsize) for j in range(config.imsize)]
+    pred_actions = np.argmax(pred_q, axis=1)
+    # format like the grid
+    pred_actions = np.array([pred_actions[i:i+agent.config.imsize] for i in range(0, len(pred_actions), agent.config.imsize)])
+    target_actions = np.argmax(q_target, axis=2)
+    print(pred_actions)
+    print(target_actions.detach().numpy())
+    return pred_actions, target_actions
+        
+
+def get_optimal_path(G):
+    dijkstra_traj = None
+    while not dijkstra_traj:
+        start_state = np.int64(np.random.randint(G.G.shape[0]))
+        dijkstra_traj = get_trajectory(G, start_state, G.map_ind_to_state(G.target_x, G.target_y))
+        if start_state == G.map_ind_to_state(G.target_x, G.target_y):
+            dijkstra_traj = False
+    return dijkstra_traj, start_state
+
+def get_pred_path(start_state, G, agent):
+    pred_traj = []
+    current_state = start_state
+    done = False
+    steps = 0
+    agent.exploration_prob = 0 # follow policy explicitly now.
+    while not done and steps < agent.config.imsize**2:
+        pred_traj.append(G.get_coords(current_state))
+        print('current state', G.get_coords(current_state))
+        action = agent.compute_action(G.get_coords(current_state)) # this recalculates, should i just get from agent.q_values? should i store agent.actions somewhere?
+        # especially since i never use q_values without the fc layer. and barely use them without argmax (just for loss)
+        # action = np.argmax(q_values[current_state])
+        print('action', action)
+        next_state = G.sample_next_state(current_state, action)
+        if next_state == G.map_ind_to_state(G.target_x, G.target_y):
+            done = True
+            pred_traj.append(G.get_coords(next_state))
+            print('solved!')
+        current_state = next_state
+        steps += 1
+    print('pred', steps)
+    if done == False:
+        print('failed :(')
+    return pred_traj
+
+def get_target_path(start_state, G, agent, target_actions):
+    targ_traj = []
+    done = False
+    current_state = start_state
+    steps = 0
+    while not done and steps < agent.config.imsize**2:
+        targ_traj.append(G.get_coords(current_state))
+        action = target_actions[G.get_coords(current_state)[0], G.get_coords(current_state)[1]]
+        next_state = G.sample_next_state(current_state, action)
+        if next_state == G.map_ind_to_state(G.target_x, G.target_y):
+            done = True
+            targ_traj.append(G.get_coords(next_state))
+        current_state = next_state
+        steps +=1
+
+    if done == False:
+        print('target failed :(')
+    print('target steps:', steps)
+    return targ_traj
 
 
 # then create nn
@@ -208,7 +324,7 @@ class Agent():
             loss.backward()
             optimizer.step()
             
-
+    # with q_target precalcuated !!!!
     def train(self, batch_size, criterion, optimizer, q_target):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') # idk just adding this cuz
         # sample from memory buffer
@@ -230,7 +346,7 @@ class Agent():
             # should i update the q_values
             # q_target = experience['reward'] + self.gamma * np.max(q_target[experience['next_state']])
             # also not sure if i should redo q_target during training but i dont think so..
-            pred, output = self.model.fc(q_values[0, :, state_x, state_y]), torch.tensor(q_target[state_x][state_y])
+            pred, output = self.model.fc(q_values[0, :, state_x, state_y]), q_target[state_x][state_y]
             # print(pred[experience['action']], output[experience['action']])
             
             loss = criterion(pred, output)
