@@ -7,7 +7,7 @@ from model import *
 # np.random.seed(9)
 
 ### functions that make up the underlying code
-# first generate data
+# enerate data
 def generate_gridworld(max_obs, dom_size):
     border_res = False
     while not border_res:
@@ -19,6 +19,7 @@ def generate_gridworld(max_obs, dom_size):
     G = GridWorld(im, goal[0], goal[1])
     return G
 
+# get an example trajectory (dont use this anymore?)
 def get_sample(G, n_traj, i, dom_size):
     value_prior = G.t_get_reward_prior()
     states_xy, states_one_hot = sample_trajectory(G, n_traj)
@@ -45,7 +46,8 @@ def get_sample(G, n_traj, i, dom_size):
     visualize(G, states_xy[i])
     return X_current, S1_current, S2_current, Labels_current
 
-def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, dj_traj=None): # ugh sorta redundant but not worth cleaning up
+# visualize gridworld and calculated paths if any
+def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, opt_traj=None): # ugh sorta redundant but not worth cleaning up
     # plt.ion()
     fig, ax = plt.subplots()
     implot = plt.imshow(G.image.T, cmap='Greys_r') # WHY T
@@ -57,10 +59,11 @@ def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, dj_traj=
         ax.plot(targ_traj[:, 0], targ_traj[:, 1], c='b', label='Optimal Path')
     if pred_traj is not None:
         ax.plot(pred_traj[:, 0], pred_traj[:, 1], c='r', label='Predicted Path')
-    if dj_traj is not None:
-        ax.plot(dj_traj[:, 0], dj_traj[:, 1], c='g', label='Djikstra Path')
+    if opt_traj is not None:
+        ax.plot(opt_traj[:, 0], opt_traj[:, 1], c='g', label='Djikstra Path')
     plt.show()
-    
+
+# get optimal trajectory from start to goal
 def get_trajectory(G, start, goal): # start and goal are state val not coords
     _, W = G.get_graph_inv()
     path = []
@@ -81,7 +84,6 @@ def train_loop(config, G, agent):
     max_steps = 50 # steps we wanna try before we give up on finding goal (computational bound)
     total_steps = 0
 
-    # ACTUAL TRAIN W/ NN
     q_target = torch.zeros((config.imsize, config.imsize, 8))
     agent.gamma = 0.75
 
@@ -113,7 +115,8 @@ def train_loop(config, G, agent):
             total_steps = 0 # reset total steps so it can rebuild memory buffer??? im not sure.
             agent.memory_buffer = [] # and reset memory buffer ? not sure. 
     return agent, q_target
-            
+
+# calculate policy (argmax) of a matrix of q values generated from NN
 def get_policy(agent, q_target):
     q_values = agent.q_values
     pred_q = [agent.model.fc(q_values[0, :, i, j]).detach().numpy() for i in range(agent.config.imsize) for j in range(agent.config.imsize)]
@@ -126,16 +129,19 @@ def get_policy(agent, q_target):
     print(target_actions.detach().numpy())
     return pred_actions, target_actions
         
-
-def get_optimal_path(G):
+# generate a random valid start coordinate and the path from it to the goal
+def generate_path(G):
     dijkstra_traj = None
-    while not dijkstra_traj:
+    count = 0
+    while not dijkstra_traj and count < 50:
         start_state = np.int64(np.random.randint(G.G.shape[0]))
         dijkstra_traj = get_trajectory(G, start_state, G.map_ind_to_state(G.target_x, G.target_y))
         if start_state == G.map_ind_to_state(G.target_x, G.target_y):
             dijkstra_traj = False
+        count += 1
     return dijkstra_traj, start_state
 
+# use predicted q values from neural network to generate a path 
 def get_pred_path(start_state, G, agent):
     pred_traj = []
     current_state = start_state
@@ -144,23 +150,25 @@ def get_pred_path(start_state, G, agent):
     agent.exploration_prob = 0 # follow policy explicitly now.
     while not done and steps < agent.config.imsize**2:
         pred_traj.append(G.get_coords(current_state))
-        print('current state', G.get_coords(current_state))
+        # print('current state', G.get_coords(current_state))
         action = agent.compute_action(G.get_coords(current_state)) # this recalculates, should i just get from agent.q_values? should i store agent.actions somewhere?
         # especially since i never use q_values without the fc layer. and barely use them without argmax (just for loss)
         # action = np.argmax(q_values[current_state])
-        print('action', action)
+        # print('action', action)
         next_state = G.sample_next_state(current_state, action)
         if next_state == G.map_ind_to_state(G.target_x, G.target_y):
             done = True
             pred_traj.append(G.get_coords(next_state))
-            print('solved!')
+            # print('solved!')
         current_state = next_state
         steps += 1
-    print('pred', steps)
-    if done == False:
-        print('failed :(')
-    return pred_traj
+    # print('pred', steps)
+    # if done == False:
+        # print('failed :(')
+    return pred_traj, done
 
+# use the target values calculated from agent's experience to generate a path 
+# the target values are not always correct so it's different from the optimal path sometimes
 def get_target_path(start_state, G, agent, target_actions):
     targ_traj = []
     done = False
@@ -176,49 +184,11 @@ def get_target_path(start_state, G, agent, target_actions):
         current_state = next_state
         steps +=1
 
-    if done == False:
-        print('target failed :(')
-    print('target steps:', steps)
-    return targ_traj
+   # if done == False:
+        # print('target failed :(')
+    # print('target steps:', steps)
+    return targ_traj, done
 
-
-# then create nn
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.nn.parameter import Parameter
-
-def create_nn():
-    vin = dict()
-    vin['h'] = nn.Conv2d(
-        in_channels=2,
-        out_channels=150,
-        kernel_size=(3, 3),
-        stride=1,
-        padding=1,
-        bias=True)
-    vin['r'] = nn.Conv2d(
-        in_channels=150,
-        out_channels=1,
-        kernel_size=(1, 1),
-        stride=1,
-        padding=0,
-        bias=False)
-    vin['q_func'] = nn.Conv2d(
-        in_channels=1,
-        out_channels=10,
-        kernel_size=(3, 3),
-        stride=1,
-        padding=1,
-        bias=False)
-    vin['fc'] = nn.Linear(in_features=10, out_features=8, bias=False)
-    vin['w'] = Parameter(
-        torch.zeros(10, 1, 3, 3), requires_grad=True)
-    vin['sm'] = nn.Softmax(dim=1)
-    return vin
-
-def forward(X_current, S1_current, S2_current, vin):
     X_current = torch.tensor(X_current, dtype=torch.float32)
     S1_current = torch.tensor(S1_current.flatten(), dtype=torch.float32)
     S2_current = torch.tensor(S2_current.flatten(), dtype=torch.float32)
@@ -246,6 +216,7 @@ def forward(X_current, S1_current, S2_current, vin):
     pred_action = vin['fc'](q_out)  # q_out to actions
     return pred_action, vin['sm'](pred_action)
 
+# contains all the agent's internal knowledge ?
 class Agent():
     def __init__(self, config):
         self.config = config

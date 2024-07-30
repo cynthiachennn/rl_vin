@@ -13,7 +13,7 @@ from sandbox_utils import *
 
 # np.random.seed(9)
 
-config = type('config', (), {'datafile': 'none',
+config = type('config', (), {'datafile': 'gridworld_8x8.npz',
                              'imsize': 8,
                              'lr': 0.005, 
                              'epochs': 30,
@@ -35,14 +35,14 @@ print(G.image)
 
 agent.learn_world(G) # creates new q mapping based on "best"/learned reward func
 # get functional start and optimal path from djikstra
-dijkstra_traj, start_state = get_optimal_path(G)
+opt_traj, start_state = generate_path(G)
 # get predicted path from agent
-pred_traj = get_pred_path(start_state, G, agent)
+pred_traj, done_pred = get_pred_path(start_state, G, agent)
 # get optimal path from target q values
-targ_traj = get_target_path(start_state, G, agent, target_actions)
+targ_traj, done_targ = get_target_path(start_state, G, agent, target_actions)
 # test if my target is even good...
-if targ_traj == dijkstra_traj:
+if targ_traj == opt_traj:
     print('good target?')
 
 # pred = red, targ = blue, dj = green
-visualize(G, start = G.get_coords(start_state), goal = [G.target_x, G.target_y], pred_traj = np.array(pred_traj), targ_traj = np.array(targ_traj), dj_traj = np.array(dijkstra_traj))
+visualize(G, start = G.get_coords(start_state), goal = [G.target_x, G.target_y], pred_traj = np.array(pred_traj), targ_traj = np.array(targ_traj), opt_traj = np.array(opt_traj))
