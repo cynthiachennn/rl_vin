@@ -1,3 +1,4 @@
 DQN notes.txt
+dqn.py
 __pycache__/**
-/dataset/gridworld_*x*.npz
+/dataset/*.npz
