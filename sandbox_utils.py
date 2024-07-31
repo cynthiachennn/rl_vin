@@ -189,32 +189,6 @@ def get_target_path(start_state, G, agent, target_actions):
     # print('target steps:', steps)
     return targ_traj, done
 
-    X_current = torch.tensor(X_current, dtype=torch.float32)
-    S1_current = torch.tensor(S1_current.flatten(), dtype=torch.float32)
-    S2_current = torch.tensor(S2_current.flatten(), dtype=torch.float32)
-    vin['h'] = vin['h'](X_current)
-    vin['r'] = vin['r'](vin['h'])
-    vin['q'] = vin['q_func'](vin['r'])
-    vin['v'], _ = torch.max(vin['q'], dim=1, keepdim=True)
-    def eval_q(r, v):
-        return F.conv2d(
-            # Stack reward with most recent value
-            torch.cat([r, v], 1),
-            # Convolve r->q weights to r, and v->q weights for v. These represent transition probabilities
-            torch.cat([vin['q_func'].weight, vin['w']], 1),
-            stride=1,
-            padding=1)
-    # Update q and v values
-    k = 100
-    for i in range(k - 1):
-        vin['q'] = eval_q(vin['r'], vin['v'])
-        vin['v'], _ = torch.max(vin['q'], dim=1, keepdim=True)
-    vin['q'] = eval_q(vin['r'], vin['v'])
-    # q: (batch_sz, l_q, map_size, map_size)
-    batch_sz, l_q, _, _ = vin['q'].size()
-    q_out = vin['q'][torch.arange(batch_sz), :, S1_current.long(), S2_current.long()].view(batch_sz, l_q)
-    pred_action = vin['fc'](q_out)  # q_out to actions
-    return pred_action, vin['sm'](pred_action)
 
 # contains all the agent's internal knowledge ?
 class Agent():

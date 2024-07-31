@@ -41,7 +41,7 @@ class GridWorld:
         R = - np.ones((self.n_states, self.n_actions)) * action_cost
         # Reward at target is zero
         target = self.loc_to_state(self.target_x, self.target_y)
-        R[target, :] = 10 # works less well if reward = 0, still owrks sometimes?
+        R[target, :] = 10 # works less well if reward = 0, still works sometimes?
 
         # Transition function P: (curr_state, next_state, action) -> probability: float
         P = np.zeros((self.n_states, self.n_states, self.n_actions))

@@ -34,7 +34,7 @@ print(G.image)
 # TEST (on the same gridworld)
 
 agent.learn_world(G) # creates new q mapping based on "best"/learned reward func
-# get functional start and optimal path from djikstra
+# get functional start and optimal path from dijkstra
 opt_traj, start_state = generate_path(G)
 # get predicted path from agent
 pred_traj, done_pred = get_pred_path(start_state, G, agent)
