@@ -18,8 +18,7 @@ class GridworldData(data.Dataset):
         self.target_transform = target_transform
         self.train = train  # Training set or test set
 
-        self.images, self.S1, self.S2, self.labels =  \
-                                self._process(file, self.train)
+        self.images =  self._process(file, self.train)
 
     def __getitem__(self, index):
         img = self.images[index]

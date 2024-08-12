@@ -12,7 +12,7 @@ from model import *
 from sandbox_utils import *
 
 
-config = type('config', (), {'datafile': 'none',
+config = type('config', (), {'datafile': 'dataset/rl/gridworld_8x8.npz',
                              'imsize': 8,
                              'lr': 0.005, 
                              'epochs': 30,
@@ -22,7 +22,32 @@ config = type('config', (), {'datafile': 'none',
                              'l_q': 10,
                              'batch_size': 128})
 
+
+# load data
+trainset = GridworldData(config.datafile, imsize=config.imsize, train=True)
+testset = GridworldData(config.datafile, imsize=config.imsize, train=False)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size, shuffle=True)
+testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size, shuffle=False)
+
 # train on random n worlds
+agent = Agent(config)
+for epoch in range(config.epochs):
+    avg_error, avg_loss, num_batches = 0
+    for i, data in enumerate(trainloader):
+        image, start, goal = data
+        if image.size()[0] != config.batch_size:
+            continue # Drop those data, if not enough for a batch
+        agent, q_target = train_loop(config, image, agent)
+        pred_actions, target_actions = get_policy(agent, q_target)
+        agent.learn_world(G)
+        opt_traj, start_state = generate_path(G)
+        if opt_traj == False: 
+            continue
+        pred_traj, done_pred = get_pred_path(start_state, G, agent)
+        target_traj, done_target = get_target_path(start_state, G, agent, target_actions)
+        if done_pred == True:
+            print('yay')
+
 n_worlds = 50
 count_correct = 0
 

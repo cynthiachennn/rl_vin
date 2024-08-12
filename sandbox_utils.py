@@ -7,7 +7,7 @@ from model import *
 # np.random.seed(9)
 
 ### functions that make up the underlying code
-# enerate data
+# generate data
 def generate_gridworld(max_obs, dom_size):
     border_res = False
     while not border_res:
@@ -56,11 +56,11 @@ def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, opt_traj
     if goal is not None:
         ax.plot(goal[0], goal[1], 'go', label='Goal')
     if targ_traj is not None:
-        ax.plot(targ_traj[:, 0], targ_traj[:, 1], c='b', label='Optimal Path')
+        ax.plot(targ_traj[:, 0], targ_traj[:, 1], c='b', label='Calculated Target Path')
     if pred_traj is not None:
         ax.plot(pred_traj[:, 0], pred_traj[:, 1], c='r', label='Predicted Path')
     if opt_traj is not None:
-        ax.plot(opt_traj[:, 0], opt_traj[:, 1], c='g', label='Djikstra Path')
+        ax.plot(opt_traj[:, 0], opt_traj[:, 1], c='g', label= 'Optimal Path')
     plt.show()
 
 # get optimal trajectory from start to goal
@@ -79,13 +79,13 @@ def get_trajectory(G, start, goal): # start and goal are state val not coords
         path.append((r, c))
     return path
 
-def train_loop(config, G, agent):
-    episodes = 200
+def train_loop(config, image, agent):
+    episodes = 100 # how many times we restart on the same map. is this too much ? maybe more like... 10 lol
     max_steps = 50 # steps we wanna try before we give up on finding goal (computational bound)
     total_steps = 0
 
-    q_target = torch.zeros((config.imsize, config.imsize, 8))
-    agent.gamma = 0.75
+    q_target = torch.zeros((image.shape[0], image.shape[2], image.shape[3], 8)) # batch size, imsize, imsize, n_actions
+    agent.gamma = 0.75 # higher for bigger maps
 
     for ep in range(episodes):
         current_state = np.int64(np.random.randint(G.G.shape[0]))
@@ -188,6 +188,7 @@ def get_target_path(start_state, G, agent, target_actions):
         # print('target failed :(')
     # print('target steps:', steps)
     return targ_traj, done
+
 
 
 # contains all the agent's internal knowledge ?

@@ -181,9 +181,15 @@ class GridWorld:
             new_col = col
         return new_row, new_col
     
-    # def get_q_values(self):
-        # for 
-
+    def show_grid_to_state(self):
+        states = np.zeros(self.image.shape)
+        for r in range(self.n_row):
+            for c in range(self.n_col):
+                if self.image[r][c] == 0:
+                    states[r, c] = 0
+                else:
+                    states[r, c] = self.map_ind_to_state(r, c)
+        print(states)
 
 def trace_path(pred, source, target):
     # traces back shortest path from
