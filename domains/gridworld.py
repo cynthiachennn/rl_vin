@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import dijkstra
+from scipy.sparse.csgraph import dijkstra, connected_components
 from collections import OrderedDict
 
 
@@ -20,7 +20,9 @@ class GridWorld:
         self.n_states = self.n_row * self.n_col
         self.n_actions = len(self.ACTION)
 
-        self.G, self.W, self.P, self.R, self.state_map_row, self.state_map_col = self.set_vals()
+        self.G, self.W, self.P, self.R, self.iv_mixed, self.state_map_row, self.state_map_col = self.set_vals()
+
+        self.start_x, self.start_y = self.gen_start()
 
     def loc_to_state(self, row, col):
         return np.ravel_multi_index([row, col], (self.n_row, self.n_col), order='F')
@@ -39,7 +41,7 @@ class GridWorld:
         # R = self.get_reward_prior().ravel('F')
 
         R = - np.ones((self.n_states, self.n_actions)) * action_cost
-        # Reward at target is zero
+        # Reward at target is --zero-- *ten*
         target = self.loc_to_state(self.target_x, self.target_y)
         R[target, :] = 10 # works less well if reward = 0, still works sometimes?
 
@@ -68,6 +70,7 @@ class GridWorld:
         P = P[non_obstacles, :, :][:, non_obstacles, :] # transition probabilities
         # R = R[non_obstacles] # rewards
         R = R[non_obstacles, :] # rewards
+        iv_mixed = np.concatenate((self.image.reshape(1, 1, self.n_row, self.n_col), self.get_reward_prior().reshape(1, 1, self.n_row, self.n_col)), axis=1)
 
 
         state_map_col, state_map_row = np.meshgrid(
@@ -75,7 +78,7 @@ class GridWorld:
         state_map_row = state_map_row.flatten('F')[non_obstacles]
         state_map_col = state_map_col.flatten('F')[non_obstacles]
 
-        return G, W, P, R, state_map_row, state_map_col
+        return G, W, P, R, iv_mixed, state_map_row, state_map_col
 
     def get_graph(self):
         # Returns graph
@@ -190,6 +193,16 @@ class GridWorld:
                 else:
                     states[r, c] = self.map_ind_to_state(r, c)
         print(states)
+    
+    def gen_start(self):
+        _, g_dense = self.get_graph_inv() # _ is the adjacency matrix, g_dense is transition costs
+        goal_s = self.map_ind_to_state(self.target_x, self.target_y)
+        g_sparse = csr_matrix(g_dense) 
+        d, pred = dijkstra(g_sparse, indices=goal_s, return_predecessors=True)
+        _, cc = connected_components(g_sparse, directed=False, return_labels=True)
+        cc_idx = np.where(cc == cc[goal_s])
+        start_x, start_y = self.get_coords(np.random.choice(cc_idx[0])) # ensures that the start is connected to the goal
+        return start_x, start_y
 
 def trace_path(pred, source, target):
     # traces back shortest path from

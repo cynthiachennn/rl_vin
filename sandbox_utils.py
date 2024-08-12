@@ -7,7 +7,7 @@ from model import *
 # np.random.seed(9)
 
 ### functions that make up the underlying code
-# generate data
+# generate a random gridworld object w/ goal
 def generate_gridworld(max_obs, dom_size):
     border_res = False
     while not border_res:
@@ -19,7 +19,7 @@ def generate_gridworld(max_obs, dom_size):
     G = GridWorld(im, goal[0], goal[1])
     return G
 
-# get an example trajectory (dont use this anymore?)
+# get one or more example trajectories (dont use this anymore?)
 def get_sample(G, n_traj, i, dom_size):
     value_prior = G.t_get_reward_prior()
     states_xy, states_one_hot = sample_trajectory(G, n_traj)
@@ -79,18 +79,18 @@ def get_trajectory(G, start, goal): # start and goal are state val not coords
         path.append((r, c))
     return path
 
-def train_loop(config, image, agent):
+def train_loop(config, G, agent):
     episodes = 100 # how many times we restart on the same map. is this too much ? maybe more like... 10 lol
     max_steps = 50 # steps we wanna try before we give up on finding goal (computational bound)
     total_steps = 0
 
-    q_target = torch.zeros((image.shape[0], image.shape[2], image.shape[3], 8)) # batch size, imsize, imsize, n_actions
+    q_target = torch.zeros((G.shape[0], G.n_rows, G.n_cols, 8)) # batch size, imsize, imsize, n_actions
     agent.gamma = 0.75 # higher for bigger maps
 
     for ep in range(episodes):
         current_state = np.int64(np.random.randint(G.G.shape[0]))
         done = False
-        agent.learn_world(G)
+        q_values = agent.model.map_qs(G.iv_mixed, config.k) # 
         for step in range(max_steps):
             total_steps = total_steps + 1
             action = agent.compute_action(G.get_coords(current_state))
@@ -204,10 +204,7 @@ class Agent():
 
     def compute_action(self, current_state):
         if np.random.uniform(0, 1) < self.exploration_prob:
-            # print('random')
             return np.random.choice(range(self.n_actions))
-        # q_values = self.model.forward(self.state)
-        # print('policy')
         # q_values = self.model.map_qs(self.iv_mixed, self.config.k)
         # action = np.max(self.model.fc(q_values[0, :, current_state[0], current_state[1]]))
         _, action = self.model.forward(self.iv_mixed, current_state[0], current_state[1], self.config.k)

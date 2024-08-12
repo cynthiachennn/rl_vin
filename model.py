@@ -72,7 +72,7 @@ class VIN(nn.Module):
 
         return logits, self.sm(logits)
     
-    def map_qs(self, input_view, k): # this is just .forward without fc or argmax
+    def map_q(self, input_view, k): # this is just .forward without fc or argmax
         # use existing predicted weights and rewards to generate
         # q function?
 
@@ -97,10 +97,3 @@ class VIN(nn.Module):
 
         self.q_values = eval_q(r, v)
         return self.q_values
-    
-    def predict_q(self, state_x, state_y, a):
-        # predict next q based on optimal action? 
-        batch_sz, l_q, _, _ = self.q_values.size()
-        q_out = self.q_vals[torch.arange(batch_sz), :, state_x.long(), state_y.long()].view(batch_sz, l_q)
-        return q_out
-    
