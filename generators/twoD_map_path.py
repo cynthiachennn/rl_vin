@@ -61,7 +61,7 @@ class TwoDMapPath():
                 end_s_c = room_rc[1][k] + dc
                 if self.grid[end_s_r, end_s_c] > 0:   ### obstacle
                     T[a, k, k] = 1
-                else:   #### the end state is an adjajacent room; so we need to find it in the list of empyt rooms
+                else:   #### the end state is an adjacent room; so we need to find it in the list of empyt rooms
                     end_ind = MapGenerator.rcToRoomIndex(self.grid, end_s_r, end_s_c)
                     T[a, k, end_ind] = 1
 

@@ -13,6 +13,7 @@ from sandbox_utils import *
 from generators.sparse_map import SparseMap
 from domains.batch_worlds import *
 
+np.random.seed(9)
 config = type('config', (), {'datafile': 'dataset/rl/gridworld_8x8.npz',
                              'imsize': 8,
                              'lr': 0.005, 
@@ -22,13 +23,6 @@ config = type('config', (), {'datafile': 'dataset/rl/gridworld_8x8.npz',
                              'l_h': 150,
                              'l_q': 10,
                              'batch_size': 128})
-
-
-# load data = (img, goal) format.
-trainset = GridworldData(config.datafile, imsize=config.imsize, train=True)
-testset = GridworldData(config.datafile, imsize=config.imsize, train=False)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=config.batch_size, shuffle=True)
-testloader = torch.utils.data.DataLoader(testset, batch_size=config.batch_size, shuffle=False)
 
 # generate data?? -sparse map not kentsommer gridworld.
 num_envs = 16
@@ -59,18 +53,42 @@ model = VIN(config) # list of agent objects with just a nested list because I fe
 # ^ like write it so everything is designed to accept an extra dimension and it would be faster then
 # UGh math.
 
+
+trainloader = trainset[0:4]
+images, goals = trainloader[0], trainloader[1]
+worlds = Worlds(images, goals[:, 0], goals[:, 1])
+exploration_prob = 1.0
+current_state = worlds.loc_to_state(worlds.start_x, worlds.start_y)
+q_target = torch.zeros((worlds.n_worlds, worlds.n_row, worlds.n_col, 8)) # batch, states, actions
+done = np.array([False]*worlds.n_worlds)
+q_values = model.map_q(worlds.iv_mixed, config.k)
+step = 0
+total_steps += 1
+if np.random.uniform(0, 1) < exploration_prob:
+    action = np.random.choice(8, size=4)
+
+# get next state by transition matrix
+trans_probabilities = worlds.P[0, current_state, :, action] # T(s, a, *)
+next_state = 
+
+
+rng = np.random.default_rng()
+next_state = rng.choice(range(worlds.n_states), axis=1, )
+
+
 for epoch in range(config.epochs): # loop over the dataset multiple times
     avg_error, avg_loss, num_batches = 0, 0, 0
     for i, data in enumerate(trainloader): # for each batch in dataset
         image, goal = data # image, goal = trainset.images[0:4], trainset.goals[0:4]
         worlds = Worlds(image, goal[:, 0], goal[:, 1]) # one worlds object per batch
-        if worlds.size()[0] != config.batch_size:
+        if worlds.n_worlds != config.batch_size:
             continue # Drop those data, if not enough for a batch
+            # ^ before this was worlds.size idk whhy
         exploration_prob = 1.0
         for ep in range(episodes): # do a certain number of episodes (restart from beginning)
             # same as old code, but it's in batches now so there are extra dimensions
             current_state = worlds.loc_to_state(worlds.start_x, worlds.start_y)
-            q_target = torch.zeros((worlds.shape[0], worlds.n_rows, worlds.n_cols, 8)) # batch, states, actions
+            q_target = torch.zeros((worlds.n_worlds, worlds.n_row, worlds.n_col, 8)) # batch, states, actions
             done = np.array([False]*worlds.n_worlds)
             q_values = model.map_q(worlds.iv_mixed, config.k)
             for step in range(max_steps):
@@ -82,12 +100,9 @@ for epoch in range(config.epochs): # loop over the dataset multiple times
                     current_x, current_y = np.array([G.get_coords(current_state) for G in worlds]).reshape((worlds.shape[0], 2)) # uhhh dunno if this makes sense haha
                     _, action = model.forward(worlds.iv_mixed, current_x, current_y, config.k)
                     action = np.argmax(action.detach().numpy())
+                
+        
 
-
-trainloader = trainset[0:4]
-images, goals = trainloader[0], trainloader[1]
-
-            
             
             
             

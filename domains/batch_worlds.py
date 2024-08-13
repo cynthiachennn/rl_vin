@@ -7,10 +7,12 @@ from itertools import product
 class Worlds:
     # basically the gridworld class but it can take in batches as input i guess.
     
-    ACTION = OrderedDict(N=(-1, 0), S=(1, 0), E=(0, 1), W=(0, -1), NE=(-1, 1), NW=(-1, -1), SE=(1, 1), SW=(1, -1))
+    # ACTION = OrderedDict(N=(-1, 0), S=(1, 0), E=(0, 1), W=(0, -1), NE=(-1, 1), NW=(-1, -1), SE=(1, 1), SW=(1, -1))
+    # ACTION = OrderedDict(NE = (-1, 1), N = (-1, 0), NW = (-1, -1), W = (0, -1), STAY = (0, 0), E = (0, 1), SE = (1, 1), S = (1, 0), SW = (1, -1))
+    ACTION = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0), (1, 1)]
 
     def __init__(self, image, target_x, target_y):
-        self.image = image # false/0 = freespace, true/1 = obstacle.
+        self.image = image # false/0 = obstacle, true/1 = freespace ?!.
         self.n_worlds = image.shape[0]
         self.n_row = image.shape[1]
         self.n_col = image.shape[2]
@@ -22,16 +24,16 @@ class Worlds:
         self.n_actions = len(self.ACTION)
 
         self.G, self.W, self.P, self.R, self.iv_mixed = self.set_vals()
-        self.start_x, self.start_y = self.gen_start() # if i use koosha's method of generating graph I dont actually need this bc its already fully connected ? i can just generate a random freespace
+        self.start_x, self.start_y = self.gen_start()
 
-    def loc_to_state(self, row, col):
+    def get_state(self, row, col):
         return [np.ravel_multi_index([row[i], col[i]], (self.n_row, self.n_col), order='F') for i in range(len(row))]
         # not sure if this can be done more efficently 
         # i used this initially but its not as compatible later if we wanna index the rows
         # return np.ravel_multi_index([range(self.n_worlds), row, col], (self.n_worlds, self.n_row, self.n_col)) # also would have to take out order='F'
     
     def get_coords(self, state):
-        return [np.unravel_index(state, (self.n_row, self.n_col), order='F') for i in range(len(state))]
+        return np.unravel_index(state, (self.n_row, self.n_col), order='F')
     
     def move(self, world, row, col, action):
         r_move, c_move = self.ACTION[action]
@@ -45,28 +47,36 @@ class Worlds:
 
         # Cost of each action, equivalent to the length of each vector
         #  i.e. [1., 1., 1., 1., 1.414, 1.414, 1.414, 1.414]
-        action_cost = np.linalg.norm(list(self.ACTION.values()), axis=1)
-        
+        # action_cost = np.linalg.norm(list(self.ACTION.values()), axis=1)
+        action_cost = np.linalg.norm(self.ACTION, axis=1)
+
         # determine rewards
         # R = self.get_reward_prior().ravel('F')
 
         R = - np.ones((self.n_worlds, self.n_states, self.n_actions)) * action_cost
         # Reward at target is --zero-- *ten*
-        target = self.loc_to_state(self.target_x, self.target_y)
+        target = self.get_state(self.target_x, self.target_y)
         R[range(self.n_worlds), target, :] = 10 # works less well if reward = 0, still works sometimes?
 
         # Transition function P: (curr_state, next_state, action) -> probability: float
         P = np.zeros((self.n_worlds, self.n_states, self.n_states, self.n_actions))
         # Filling in P
         for world in range(self.n_worlds):
-            for i_action, action in enumerate(self.ACTION):
+            # for i_action, action in enumerate(self.ACTION):
+            for action in range(self.n_actions):
+                # row = np.array([[i for i in self.freespace[world][0]] for _ in self.freespace[world][1]])
+                # col = np.array([[i for _ in self.freespace[world][0]] for i in self.freespace[world][1]])
+
                 row = np.array([[i for i in range(self.n_col)] for _ in range(self.n_row)])
                 col = np.array([[i for _ in range(self.n_col)] for i in range(self.n_row)])
                 # row = [i for i in range(self.n_row) for _ in range(self.n_col)] # this i cur [1:18, [1:18], needs to be [1*18 : 18*18], [1:18 * 18]]///
                 # col = [i for _ in range(self.n_row) for i in range(self.n_col)] # 1: does this works, 2: is it efficent
                 neighbor_row, neighbor_col = self.move(world, row, col, action)
-                neighbor_state = self.loc_to_state(neighbor_row.flatten(), neighbor_col.flatten())
-                P[world, range(self.n_states), neighbor_state, i_action] = 1
+                neighbor_state = self.get_state(neighbor_row.flatten(), neighbor_col.flatten())
+                P[world, range(self.n_states), neighbor_state, action] = np.where(self.image[world, row, col] == 1, 1, 0).flatten() # set transition = 1 if there is a freespace @ start....
+                # ^ or we could build this bit right into move and say that the state stays the same if move starts in a == 0 ? not sure whats better
+                # P[world, range(self.n_states), neighbor_state, i_action] = 1
+                # P[world, range(self.n_states), neighbor_state, action] = 1
 
 
         # Adjacency matrix of a graph connecting curr_state and next_state
@@ -79,26 +89,41 @@ class Worlds:
         # solution ?: skip the non_obstacles part...
 
         iv_mixed = np.concatenate((self.image.reshape(self.n_worlds, 1, self.n_row, self.n_col), self.get_reward_prior().reshape(self.n_worlds, 1, self.n_row, self.n_col)), axis=1)
+        iv_mixed = torch.from_numpy(iv_mixed.astype(np.float32))
         return G, W, P, R, iv_mixed 
     
     def get_reward_prior(self): # -1 all, 10 targrt....
         im = -1 * np.ones((self.n_worlds, self.n_row, self.n_col))
         im[range(self.n_worlds), self.target_x, self.target_y] = 10
         return im
-
-    def gen_start(self):
-        g_dense = np.transpose(self.W, (0, 2, 1)) # uhhh does this still work when its no longer sparse/freespace representation ?
-        g_sparse = [csr_matrix(dense) for dense in g_dense] # is it worth to convert to sparse matrix for dijkstra? 
-        goal_s = self.loc_to_state(self, self.target_x, self.target_y)
-        pred = np.array([dijkstra(g_sparse[i], indices=goal_s[i], return_predecessors=True)[1] for i in range(self.n_worlds)])
-        # pred = pred[:, 1]
-        cc = np.array([connected_components(g_sparse[i], directed=False, return_labels=True)[1] for i in range(self.n_worlds)])
-        cc_idx = [np.where(cc[i] == cc[i, goal_s[i]]) for i in range(self.n_worlds)]
-        start_x, start_y = self.get_coords(self, np.random.choice(cc_idx[1]))
+    
+    def sample_next_state(self, s, a):
+        vec = np.squeeze(self.P[s, :, a]).T
+        return np.random.choice(vec)
+    
+    
+    # garbage that does not work (connected components broken)
+    # def gen_start(self):
+    #     g_dense = np.transpose(self.W, (0, 2, 1)) # uhhh does this still work when its no longer sparse/freespace representation ?
+    #     g_sparse = [csr_matrix(dense) for dense in g_dense] # is it worth to convert to sparse matrix for dijkstra? 
+    #     goal_s = self.get_state(self, self.target_x, self.target_y)
+    #     pred = np.array([dijkstra(g_sparse[i], indices=goal_s[i], return_predecessors=True)[1] for i in range(self.n_worlds)])
+    #     # pred = pred[:, 1]
+    #     cc = np.array([connected_components(g_sparse[i], directed=False, return_labels=True)[1] for i in range(self.n_worlds)])
+    #     cc_idx = [np.where(cc[i] == cc[i, goal_s[i]]) for i in range(self.n_worlds)]
+    #     start_x, start_y = self.get_coords(self, np.random.choice(cc_idx[1]))
 
         #uhhh i think the calculation of goal.
         # or the calculation of goal_s 
         # is wrong ?
+    
+    def gen_start(self):
+        valid = np.array([False]* self.n_worlds)
+        while np.any(valid == False):
+            states = np.random.choice(self.n_states, size=self.n_worlds)
+            row, col = self.get_coords(states)
+            valid = self.image[range(self.n_worlds), row, col] == 1
+        return row, col
 
     
     def __size__(self):

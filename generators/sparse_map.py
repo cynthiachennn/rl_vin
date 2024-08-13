@@ -10,7 +10,7 @@ class SparseMap(MapGenerator):
     @staticmethod
     def genMaps(num_maps = 3, map_side_len = 28, obstacle_percent = 5, scale = 3 , solvers = ['QMDP']):   # Sami prefers keeping scale = 1 and make the obstacle_percentage very low
         small_map_side = int(map_side_len  / scale)
-        layout = np.random.randint(0, 100, size = (num_maps, small_map_side, small_map_side)) < obstacle_percent  #room (empty pixel) -> 0, obstacles and wall -> 1   also we should always add borders
+        layout = np.random.randint(0, 100, size = (num_maps, small_map_side, small_map_side)) < obstacle_percent  #freespace -> 0, obstacles and wall -> 1   also we should always add borders
         large_layout = np.zeros([num_maps, map_side_len, map_side_len], dtype = np.uint) 
         for r in range(small_map_side):
             for c in range(small_map_side):

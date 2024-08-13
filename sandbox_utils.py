@@ -6,51 +6,11 @@ from model import *
 
 # np.random.seed(9)
 
-### functions that make up the underlying code
-# generate a random gridworld object w/ goal
-def generate_gridworld(max_obs, dom_size):
-    border_res = False
-    while not border_res:
-        goal = [np.random.randint(dom_size[0]), np.random.randint(dom_size[1])]
-        obs = obstacles(dom_size, goal, max_obs) # can use obs.show() to show obs map - black/0 = free, white/1 = obstacle...
-        n_obs = obs.add_n_rand_obs(max_obs)
-        border_res = obs.add_border()
-    im = obs.get_final()
-    G = GridWorld(im, goal[0], goal[1])
-    return G
-
-# get one or more example trajectories (dont use this anymore?)
-def get_sample(G, n_traj, i, dom_size):
-    value_prior = G.t_get_reward_prior()
-    states_xy, states_one_hot = sample_trajectory(G, n_traj)
-    actions = extract_action(states_xy[i])
-    ns = states_xy[i].shape[0] - 1# Invert domain image => 0 = free, 1 = obstacle
-    image = 1 - G.image
-    image_data = np.resize(image, (1, 1, dom_size[0], dom_size[1]))
-    value_data = np.resize(value_prior,
-                            (1, 1, dom_size[0], dom_size[1]))
-    iv_mixed = np.concatenate((image_data, value_data), axis=1)
-    X_current = np.tile(iv_mixed, (ns, 1, 1, 1)) # img/val * ns (so theres a seperate representation for each starting state generated)
-    S1_current = np.expand_dims(states_xy[i][0:ns, 0], axis=1)
-    S2_current = np.expand_dims(states_xy[i][0:ns, 1], axis=1)
-    Labels_current = np.expand_dims(actions, axis=1)
-    # optional: show the graph b4 continuing...
-    def visualize(G, states_xy):
-        plt.ion()
-        fig, ax = plt.subplots()
-        implot = plt.imshow(G.image.T, cmap="Greys_r") # why the .T again....
-        ax.plot(states_xy[:, 0], states_xy[:, 1], c='b', label='Optimal Path')
-        ax.plot(states_xy[0, 0], states_xy[0, 1], 'ro', label='Start')
-        ax.plot(states_xy[-1, 0], states_xy[-1, 1], 'go', label='Goal')
-    
-    visualize(G, states_xy[i])
-    return X_current, S1_current, S2_current, Labels_current
-
-# visualize gridworld and calculated paths if any
-def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, opt_traj=None): # ugh sorta redundant but not worth cleaning up
+# visualize array and calculated paths if any
+def visualize(image, start=None, goal=None, targ_traj=None, pred_traj=None, opt_traj=None): # ugh sorta redundant but not worth cleaning up
     # plt.ion()
     fig, ax = plt.subplots()
-    implot = plt.imshow(G.image.T, cmap='Greys_r') # WHY T
+    implot = plt.imshow(image, cmap='Greys_r') # WHY T
     if start is not None:
         ax.plot(start[0], start[1], 'ro', label='Start')
     if goal is not None:
@@ -62,22 +22,6 @@ def visualize(G, start=None, goal=None, targ_traj=None, pred_traj=None, opt_traj
     if opt_traj is not None:
         ax.plot(opt_traj[:, 0], opt_traj[:, 1], c='g', label= 'Optimal Path')
     plt.show()
-
-# get optimal trajectory from start to goal
-def get_trajectory(G, start, goal): # start and goal are state val not coords
-    _, W = G.get_graph_inv()
-    path = []
-    g_dense = W
-    g_masked = np.ma.masked_values(g_dense, 0)
-    g_sparse = csr_matrix(g_dense)
-    d, pred = dijkstra(g_sparse, indices=goal, return_predecessors=True)
-    states = trace_path(pred, goal, start) # what is pred oh nvm its the djkstra vals ok
-    states = np.flip(states, 0)# .reshape(states.shape[0])
-    for state in states:
-        # print(state.shape)
-        r, c = G.get_coords(np.int64(state[0]))
-        path.append((r, c))
-    return path
 
 def train_loop(config, G, agent):
     episodes = 100 # how many times we restart on the same map. is this too much ? maybe more like... 10 lol
@@ -129,17 +73,6 @@ def get_policy(agent, q_target):
     print(target_actions.detach().numpy())
     return pred_actions, target_actions
         
-# generate a random valid start coordinate and the path from it to the goal
-def generate_path(G):
-    dijkstra_traj = None
-    count = 0
-    while not dijkstra_traj and count < 50:
-        start_state = np.int64(np.random.randint(G.G.shape[0]))
-        dijkstra_traj = get_trajectory(G, start_state, G.map_ind_to_state(G.target_x, G.target_y))
-        if start_state == G.map_ind_to_state(G.target_x, G.target_y):
-            dijkstra_traj = False
-        count += 1
-    return dijkstra_traj, start_state
 
 # use predicted q values from neural network to generate a path 
 def get_pred_path(start_state, G, agent):
