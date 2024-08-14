@@ -7,7 +7,6 @@ from datetime import datetime
 from generators.sparse_map import  SparseMap
 from model import VIN
 
-
 # generate ONE world
 num_envs = 1
 map_side_len = 8
@@ -24,13 +23,6 @@ world = env.genPOMDP() # equivalent to what "gridworld" was, stores all info lik
 
     # twoD_map_path is more focused on representing the expert paths and actions that I don't need for my implementation
     # is it worth it to rewrite/reorganize the code so the "world" class is just basic map info/functions, gridworld/pomdp representations, and image view?
-    
-
-# visualize the world
-plt.ion()
-fig, ax = plt.subplots()
-plt.imshow(env.grid.T, cmap="Greys")
-ax.plot(env.goal_r, env.goal_c, 'bd')
 
 action_mapping = ["right", "up", "left", "down", "stay"]
 # start somewhere and move.
@@ -45,14 +37,6 @@ for traj in range(n_traj):
     trajectory_time = datetime.now()
     # should i regenerate the start and goal states each time?
     current_state = start_state
-    # visualize the world
-    plt.ion()
-    fig, ax = plt.subplots()
-    plt.imshow(env.grid.T, cmap="Greys")
-    ax.plot(env.goal_r, env.goal_c, 'bd')
-    start_x, start_y = SparseMap.roomIndexToRc(env.grid, current_state)
-    ax.plot(start_x, start_y, 'ro')
-
     memory = []
     total_steps = 0
     done = False
@@ -62,12 +46,7 @@ for traj in range(n_traj):
         action = np.random.choice(world.n_actions) # random action idx
         next_state = np.random.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
         observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
-        reward = world.R[action, current_state, next_state, observation] 
-        # visualize that ?
-        state_x, state_y = SparseMap.roomIndexToRc(env.grid, next_state)
-        ax.plot(state_x, state_y, 'go')
-        # plt.pause(0.01)
-        plt.show()
+        reward = world.R[action, current_state, next_state, observation]
         current_state = next_state
         # end at goal
         if current_state == goal_state:
@@ -86,7 +65,6 @@ for traj in range(n_traj):
         trajectories.append(memory)
     else:
         print("Failed :(")
-    
     print('trajectory', traj, datetime.now() - trajectory_time)
 
 
@@ -94,6 +72,7 @@ for traj in range(n_traj):
 
 config = {
     "imsize": map_side_len + 2, 
+    "n_act": world.n_actions, 
     "lr": 0.005,
     'epochs': 30,
     'l_i': 2,
@@ -105,34 +84,78 @@ model = VIN(config)
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
+# TRAIN?
 # for each trajectory:
+for trajectory in trajectories:
+    # create input view
+    reward_mapping = -1 * np.ones(env.grid.shape) # -1 for freespace
+    reward_mapping[env.goal_r, env.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+    grid_view = np.reshape(env.grid, (1, 1, env.grid.shape[0], env.grid.shape[1]))
+    reward_view = np.reshape(reward_mapping, (1, 1, env.grid.shape[0], env.grid.shape[1]))
+    input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
+    # would be nice to store this/method for this directly in world object
+    for experience in trajectory:
+        # since i update weights, do I need to reacalcculate all of these ech time omg.
+        r, v = model.process_input(input_view)
+        for i in range(config['k'] - 1):
+            q = model.eval_q(r, v)
+            v, _ = torch.max(q, dim=1, keepdim=True)
+        q = model.eval_q(r, v) 
+        # train/learn for each experience
+        optimizer.zero_grad() # when to do this. now or in traj loops?
+        state_x, state_y = SparseMap.roomIndexToRc(env.grid, experience['current_state']) # should I directly store states as tuple coords? maybe.
+        next_state_x, next_state_y = SparseMap.roomIndexToRc(env.grid, experience['next_state'])
+        q_pred, _ = model.get_action(q, state_x, state_y)
+        q_target = experience['reward'] # pull experiences from stored actions
+        if not experience['done']:
+            q_target = q_target + world.discount * np.max(q[0, :, next_state_x, next_state_y].detach().numpy())
+
+        q_pred[env_n, experience['action']] = q_target
+        loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
+        loss.backward()
+        optimizer.step()
+
+# test >>????
+# create new testing env (will perform badly if trained on only one env tho duh)
+env = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale)[env_n] # 0 = 0 freespace, 1 = obstacle
+world = env.genPOMDP()
+start_state = np.random.randint(len(world.states)) # random start state idx
+goal_state = SparseMap.rcToRoomIndex(env.grid, env.goal_r, env.goal_c)
+
 # create input view
 reward_mapping = -1 * np.ones(env.grid.shape) # -1 for freespace
 reward_mapping[env.goal_r, env.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
 grid_view = np.reshape(env.grid, (1, 1, env.grid.shape[0], env.grid.shape[1]))
 reward_view = np.reshape(reward_mapping, (1, 1, env.grid.shape[0], env.grid.shape[1]))
 input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
-# would be nice to store this/method for this directly in world object
 
-# q-map for each world once.
+# would be nice to store this/method for this directly in world object
+# learn world
 r, v = model.process_input(input_view)
 for i in range(config['k'] - 1):
     q = model.eval_q(r, v)
     v, _ = torch.max(q, dim=1, keepdim=True)
-
 q = model.eval_q(r, v) 
 
-# train/learn for each experience
-experience = trajectories[0][0] # first experience from first trajectory
-state_x, state_y = SparseMap.roomIndexToRc(env.grid, experience['current_state']) # should I directly store states as tuple coords? maybe.
-next_state_x, next_state_y = SparseMap.roomIndexToRc(env.grid, experience['next_state'])
-q_pred, _ = model.get_action(q, state_x, state_y)
-q_target = experience['reward'] # pull experiences from stored actions
-if not experience['done']:
-    q_target = q_target + world.discount * np.max(q[0, :, next_state_x, next_state_y].detach().numpy())
+# get a trajectory
+pred_traj = []
+current_state = start_state
+done = False
+steps = 0
+while not done and steps < world.n_states + 100: # should be able to do it in less than n states right.
+    state_x, state_y = SparseMap.roomIndexToRc(env.grid, current_state)
+    pred_traj.append((state_x, state_y))
+    # print('current state', G.get_coords(current_state))
+    logits, action = model.get_action(q, state_x, state_y) #
+    action = action.detach().numpy()
+    next_state = np.random.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
+    observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
+    if next_state == goal_state:
+        done = True
+        pred_traj.append(SparseMap.roomIndexToRc(env.grid, next_state))
+    current_state = next_state
+    print(current_state)
+    steps += 1
 
-q_pred[env_n, experience['action']] = q_target
-loss = criterion(model.get_action(q, state_x, state_y)[1], q_pred)
-loss.backward()
-optimizer.step()
-
+if done==False:
+    print('failed maybe')

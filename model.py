@@ -32,7 +32,7 @@ class VIN(nn.Module):
             stride=1,
             padding=1,
             bias=False)
-        self.fc = nn.Linear(in_features=config['l_q'], out_features=8, bias=False)
+        self.fc = nn.Linear(in_features=config['l_q'], out_features=config['n_act'], bias=False)
         self.w = Parameter(
             torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
         self.sm = nn.Softmax(dim=1)
@@ -80,5 +80,5 @@ class VIN(nn.Module):
         # q_out = q[torch.arange(batch_sz), :, state_x.long(), state_y.long()].view(batch_sz, l_q)
         q_out = q[torch.arange(batch_sz), :, state_x, state_y].view(batch_sz, l_q)
         logits = self.fc(q_out)  # q_out to actions
-        action = self.sm(logits)
+        action = torch.argmax(logits) # orignal action has nn.softmax, which i could np.choice with p=action to choose from distribution instead ? 
         return logits, action
