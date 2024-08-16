@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from torch.utils.data import Dataset, DataLoader
 import logging
 from datetime import datetime
 
@@ -12,17 +13,19 @@ num_envs = 32
 map_side_len = 8
 obstacle_percent = 20
 scale = 2
+discount = 0.99
 
 envs = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale) # 0 = 0 freespace, 1 = obstacle
-worlds = [env.genPOMDP() for env in envs] # equivalent to what "gridworld" was, stores all info like T, O, R, etc.
-    # i sort of don't like how this is implemented ? only 4 actions, not "in order"
+worlds = [env.genPOMDP(discount=discount) for env in envs] # equivalent to what "gridworld" was, stores all info like T, O, R, etc.
+    # annoying things I might wanna fix/change:
+    # only 4 actions + stay, not "in order"
     # indexing is [a, s, s'] instead of [s, a, s']
     # gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
     # also could remove stuff like "addPath" etc because we don't need expert solvers
 
     # twoD_map_path is more focused on representing the expert paths and actions that I don't need for my implementation
     # is it worth it to rewrite/reorganize the code so the "world" class is just basic map info/functions, gridworld/pomdp representations, and image view?
-
+    # actually i guess
 action_mapping = ["right", "up", "left", "down", "stay"]
 # one world at a time ?
 # need to pair world info with trajectory info tho
@@ -31,7 +34,8 @@ config = {
     "imsize": map_side_len + 2, 
     "n_act": 5, 
     "lr": 0.005,
-    'epochs': 30,
+    'epochs': 10,
+    'batch_size': 128,
     'l_i': 2,
     'l_h': 150,
     "l_q": 10,
@@ -42,13 +46,59 @@ model = VIN(config)
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
-for epoch in range(50):
+# will clean these up they are just random helper functions 
+class Trajectories(Dataset):
+    def __init__(self, memories, grid_view):
+        self.memories = memories
+        self.grid_view = grid_view
+    
+    def __len__(self):
+        return len(self.memories)
+    
+    def __getitem__(self, idx):
+        memories = self.memories[idx]
+        grid_view = self.grid_view[idx]
+        return memories, grid_view
+
+def collate_tensor_fn(batch):
+    # for i in range(len(batch)):
+    #     torch.squeeze(batch[i][1], 0)
+    #     print(len(batch[i][1]))
+    #     print(batch[i][1].shape)
+    #     # print(len(batch[i][1]))
+    mems = np.array([item[0] for item in batch])
+    input_views = np.array([torch.squeeze(item[1], 0) for item in batch])
+    return torch.Tensor(mems).to(int), torch.Tensor(input_views)
+
+# batched ugh.
+def batchedRoomIndexToRc(grid, room_index):
+    room_rc = [np.where(grid_i == 0) for grid_i in grid]
+    room_r = []
+    room_c = []
+    for i in range(len(grid)):
+        room_r.append(room_rc[i][0][int(room_index[i])])
+        room_c.append(room_rc[i][1][int(room_index[i])])
+    return room_r, room_c
+    # return room_rc[range(len(grid)), 0, np.array(room_index)], room_rc[range(len(grid)), 1, np.array(room_index)]
+
+
+exploration_prob = 1
+for epoch in range(config['epochs']):
     print('epoch:', epoch)
-    trajectories = []
+    explore_start = datetime.now()
+    data = [[], []]
     for world, env in zip(worlds, envs):
         start_state = np.random.randint(len(world.states)) # random start state idx
         goal_state = SparseMap.rcToRoomIndex(env.grid, env.goal_r, env.goal_c)
-        n_traj = 10
+        # create input view
+        reward_mapping = -1 * np.ones(env.grid.shape) # -1 for freespace
+        reward_mapping[env.goal_r, env.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+        grid_view = np.reshape(env.grid, (1, env.grid.shape[0], env.grid.shape[1]))
+        reward_view = np.reshape(reward_mapping, (1, env.grid.shape[0], env.grid.shape[1]))
+        input_view = torch.Tensor(np.concatenate((grid_view, reward_view))) # inlc empty 1 dim
+        # print(input_view.shape)
+        # would be nice to store this/method for this directly in world object
+        n_traj = 5
         max_steps = 5000
         for traj in range(n_traj):
             trajectory_time = datetime.now()
@@ -56,116 +106,110 @@ for epoch in range(50):
             current_state = start_state
             memories = []
             total_steps = 0
-            done = False
-            while done == False & total_steps < max_steps:
+            done = 0
+            while done == 0 and total_steps < max_steps:
                 step_time = datetime.now()
-                ### if u loop this --> line 42 it will be a random walk simulation 
-                action = np.random.choice(world.n_actions) # random action idx
+                if np.random.rand() < exploration_prob:
+                    action = np.random.choice(world.n_actions) # change this to random OR policy as epoch increases.
+                else:
+                    state_x, state_y = SparseMap.roomIndexToRc(env.grid, current_state)
+                    _, action = model.forward(input_view[None, :, :, :], state_x, state_y, config['k'])
                 next_state = np.random.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
                 observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
                 reward = world.R[action, current_state, next_state, observation]
                 current_state = next_state
                 # end at goal
                 if current_state == goal_state:
-                    done = True
-                memories.append({
-                    'current_state': current_state,
-                    'action': action,
-                    'next_state': next_state,
-                    'reward': reward,
-                    'done': done
-                })
+                    done = 1
+                memories.append([current_state, action, reward, next_state, done])
                 total_steps += 1
-            if done == True: # currently only store info if its successful
-                trajectories.append({
-                    'trajectory': memories,
-                    'world': world, # is it potentially bad to do this because storing multiples of world/env? idk but it works for now maybe
-                    'env': env
-                })
+            if done == 1: # currently only store info if its successful
+                data[0].extend(memories)
+                data[1].extend([input_view] * len(memories))
             # store data as 1 complete trajectory full of multiple memories in each entry
-            # can shuffle the trajectories and also the memeories within the trajectory ?
-
+            # can shuffle the trajectories and also the memories within the trajectory ? < but not sure if shuffling memories is gooood tbh
+    print('explore time:', datetime.now() - explore_start)
+    dataset = Trajectories(data[0], data[1])
+    dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
     # initialize the model for training after experience collecting is done
+    # Trainign???
+    
+    train_start = datetime.now()
+    for experience, input_view in dataloader: # automatically shuffles and batches the data maybe ?
+        # since i update weights, do I need to reacalculate all of these ech time omg.
+        r, v = model.process_input(input_view)
+        for i in range(config['k'] - 1):
+            q = model.eval_q(r, v)
+            v, _ = torch.max(q, dim=1, keepdim=True)
+        q = model.eval_q(r, v) 
+        # train/learn for each experience
+        # experience[current state, action, reward, next_state, done]
+        optimizer.zero_grad() # when to do this. now or in traj loops?
+        state_x, state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 0]) # should I directly store states as tuple coords? maybe.
+        next_state_x, next_state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 3])
+        q_pred, _ = model.get_action(q, state_x, state_y)
+        q_target = experience[:, 2] # pull experiences from stored actions
+        q_target = torch.where(experience[:, 4] == 1, q_target, q_target + discount * torch.max(q[:, :, next_state_x, next_state_y])) # if done, q_target = reward, else 
+        # if not experience[4]    
+            # q_target = q_target + discount * np.max(q[:, :, next_state_x, next_state_y].detach().numpy()) ### uhhh that first dim...
+        q_pred[:, experience[:, 1]] = q_target # first dim is env idx, bc theres an extra dim for batch size. how to combine ahhhhh
+        loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
+        loss.backward()
+        optimizer.step()
+    exploration_prob = exploration_prob * 0.95 # no real basis for why this. i think ive seen .exp and other things
+    print('training time:', datetime.now() - train_start)
+    print('epoch time:', datetime.now() - explore_start)
 
-    # TRAIN?
-    print('training...', len(trajectories))
-    np.random.shuffle(trajectories) # shuffle the worlds, (important cuz same world is repeated in multiple trajectories in order.)
-    # for each trajectory: 
-    for item in trajectories:
-        trajectory = item['trajectory']
-        world = item['world']
-        env = item['env']
-        # create input view
-        reward_mapping = -1 * np.ones(env.grid.shape) # -1 for freespace
-        reward_mapping[env.goal_r, env.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-        grid_view = np.reshape(env.grid, (1, 1, env.grid.shape[0], env.grid.shape[1]))
-        reward_view = np.reshape(reward_mapping, (1, 1, env.grid.shape[0], env.grid.shape[1]))
-        input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
-        # would be nice to store this/method for this directly in world object
-        np.random.shuffle(trajectory) # shuffle the experiences within a trajectory too ? 
-        for experience in trajectory:
-            # since i update weights, do I need to reacalcculate all of these ech time omg.
-            r, v = model.process_input(input_view)
-            for i in range(config['k'] - 1):
-                q = model.eval_q(r, v)
-                v, _ = torch.max(q, dim=1, keepdim=True)
-            q = model.eval_q(r, v) 
-            # train/learn for each experience
-            optimizer.zero_grad() # when to do this. now or in traj loops?
-            state_x, state_y = SparseMap.roomIndexToRc(env.grid, experience['current_state']) # should I directly store states as tuple coords? maybe.
-            next_state_x, next_state_y = SparseMap.roomIndexToRc(env.grid, experience['next_state'])
-            q_pred, _ = model.get_action(q, state_x, state_y)
-            q_target = experience['reward'] # pull experiences from stored actions
-            if not experience['done']:
-                q_target = q_target + world.discount * np.max(q[0, :, next_state_x, next_state_y].detach().numpy())
-
-            q_pred[0, experience['action']] = q_target # first dim is env idx, bc theres an extra dim for batch size. how to combine ahhhhh
-            loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
-            loss.backward()
-            optimizer.step()
 
 # test >>????
-# create new testing env (will perform badly if trained on only one env tho duh)
-env = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale)[0] # 0 = 0 freespace, 1 = obstacle
-world = env.genPOMDP()
-start_state = np.random.randint(len(world.states)) # random start state idx
-goal_state = SparseMap.rcToRoomIndex(env.grid, env.goal_r, env.goal_c)
+with torch.no_grad():
+    # create new testing env (will perform badly if trained on only one env tho duh)
+    # env = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale)[0] # 0 = 0 freespace, 1 = obstacle
+    # world = env.genPOMDP()
+    # start_state = np.random.randint(len(world.states)) # random start state idx
+    # goal_state = SparseMap.rcToRoomIndex(env.grid, env.goal_r, env.goal_c)
 
+    # create input view
+    reward_mapping = -1 * np.ones(env.grid.shape) # -1 for freespace
+    reward_mapping[env.goal_r, env.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+    grid_view = np.reshape(env.grid, (1, 1, env.grid.shape[0], env.grid.shape[1]))
+    reward_view = np.reshape(reward_mapping, (1, 1, env.grid.shape[0], env.grid.shape[1]))
+    input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
 
-# create input view
-reward_mapping = -1 * np.ones(env.grid.shape) # -1 for freespace
-reward_mapping[env.goal_r, env.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-grid_view = np.reshape(env.grid, (1, 1, env.grid.shape[0], env.grid.shape[1]))
-reward_view = np.reshape(reward_mapping, (1, 1, env.grid.shape[0], env.grid.shape[1]))
-input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
+    # would be nice to store this/method for this directly in world object
+    # learn world
+    r, v = model.process_input(input_view)
+    for i in range(config['k'] - 1):
+        q = model.eval_q(r, v)
+        v, _ = torch.max(q, dim=1, keepdim=True)
+    q = model.eval_q(r, v) 
 
-# would be nice to store this/method for this directly in world object
-# learn world
-r, v = model.process_input(input_view)
-for i in range(config['k'] - 1):
-    q = model.eval_q(r, v)
-    v, _ = torch.max(q, dim=1, keepdim=True)
-q = model.eval_q(r, v) 
+    # visualize world and values ?
+    fig, ax = plt.subplots()
+    plt.imshow(env.grid.T, cmap='Greys')
+    ax.plot(env.goal_r, env.goal_c, 'ro')
+    fig, ax = plt.subplots()
+    q_max = [[np.max(model.get_action(q, r, c)[0].detach().numpy()) for c in range(env.grid.shape[1])] for r in range(env.grid.shape[0])]
+    plt.imshow(q_max, cmap='hot')
+    # get a trajectory
+    pred_traj = []
+    current_state = start_state
+    done = False
+    steps = 0
+    while not done and steps < world.n_states + 100: # should be able to do it in less than n states right.
+        state_x, state_y = SparseMap.roomIndexToRc(env.grid, current_state)
+        pred_traj.append((state_x, state_y))
+        # print('current state', G.get_coords(current_state))
+        logits, action = model.get_action(q, state_x, state_y) #
+        action = action.detach().numpy()
+        next_state = np.random.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
+        observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
+        if next_state == goal_state:
+            done = True
+            pred_traj.append(SparseMap.roomIndexToRc(env.grid, next_state))
+        current_state = next_state
+        print(current_state)
+        steps += 1
 
-# get a trajectory
-pred_traj = []
-current_state = start_state
-done = False
-steps = 0
-while not done and steps < world.n_states + 100: # should be able to do it in less than n states right.
-    state_x, state_y = SparseMap.roomIndexToRc(env.grid, current_state)
-    pred_traj.append((state_x, state_y))
-    # print('current state', G.get_coords(current_state))
-    logits, action = model.get_action(q, state_x, state_y) #
-    action = action.detach().numpy()
-    next_state = np.random.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
-    observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
-    if next_state == goal_state:
-        done = True
-        pred_traj.append(SparseMap.roomIndexToRc(env.grid, next_state))
-    current_state = next_state
-    print(current_state)
-    steps += 1
-
-if done==False:
-    print('failed maybe')
+    if done==False:
+        print('failed maybe')
