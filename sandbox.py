@@ -2,22 +2,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
-import logging
 from datetime import datetime
 
 from generators.sparse_map import  SparseMap
+from dataset.generate_rl_dataset import SmallMap 
 from model import VIN
 from domains.batch_worlds import World
 
 # generate multiple worlds uh oh
-num_envs = 32
+num_envs = 64
 map_side_len = 8
-obstacle_percent = 20
+obstacle_percent = 20 # make a super small map, but with a fixed number of obstacles not percent based 
 scale = 2
 discount = 0.99
 
 # ok in theory this part goes in another script/ is loaded from a file but ill do that later.
-envs = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale) # 0 = 0 freespace, 1 = obstacle
+# envs = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale) # 0 = 0 freespace, 1 = obstacle
 # worlds = [env.genPOMDP(discount=discount) for env in envs] # equivalent to what "gridworld" was, stores all info like T, O, R, etc.
     # annoying things I might wanna fix/change:
     # only 4 actions + stay, not "in order"
@@ -25,12 +25,13 @@ envs = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale) # 0 = 
     # gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
     # also could remove stuff like "addPath" etc because we don't need expert solvers
 
-    # twoD_map_path is more focused on representing the expert paths and actions that I don't need for my implementation
-    # is it worth it to rewrite/reorganize the code so the "world" class is just basic map info/functions, gridworld/pomdp representations, and image view?
-    # actually i guess
-
+# SMALL MAPS
+map_side_len = 4
+obstacle_num = 4
+envs = SmallMap.genMaps(num_envs, map_side_len, obstacle_num)
+worlds = [World(env[0], env[1][0], env[1][1]) for env in envs]
 # world grids directly from file into my new class
-worlds = [World(env.grid, env.goal_r, env.goal_c) for env in envs] # essentially makes this
+# worlds = [World(env.grid, env.goal_r, env.goal_c) for env in envs] # essentially makes this
 # one world at a time ?
 # need to pair world info with trajectory info tho
 
@@ -94,7 +95,7 @@ for epoch in range(config['epochs']):
     for world in worlds:
         start_state = np.random.randint(len(world.states)) # random start state idx
         goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
-        # create input view
+        # create input view < do this before 
         reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
         reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
         grid_view = np.reshape(world.grid, (1, world.n_rows, world.n_cols))
@@ -102,7 +103,7 @@ for epoch in range(config['epochs']):
         input_view = torch.Tensor(np.concatenate((grid_view, reward_view))) # inlc empty 1 dim
         # print(input_view.shape)
         # would be nice to store this/method for this directly in world object
-        n_traj = 5
+        n_traj = 20
         max_steps = 5000
         for traj in range(n_traj):
             trajectory_time = datetime.now()
@@ -133,7 +134,7 @@ for epoch in range(config['epochs']):
                     done = 1
                 memories.append([current_state, action, reward, next_state, done])
                 total_steps += 1
-            if done == 1: # currently only store info if its successful
+            # if done == 1: # currently only store info if its successful
                 data[0].extend(memories)
                 data[1].extend([input_view] * len(memories))
             # store data as 1 complete trajectory full of multiple memories in each entry
@@ -143,7 +144,6 @@ for epoch in range(config['epochs']):
     dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
     # initialize the model for training after experience collecting is done
     # Trainign???
-    
     train_start = datetime.now()
     for experience, input_view in dataloader: # automatically shuffles and batches the data maybe ?
         # since i update weights, do I need to reacalculate all of these ech time omg.
@@ -160,7 +160,7 @@ for epoch in range(config['epochs']):
         q_pred, _ = model.get_action(q, state_x, state_y)
         q_target = experience[:, 2] # pull experiences from stored actions
         q_target = torch.where(experience[:, 4] == 1, q_target, q_target + discount * torch.max(q[:, :, next_state_x, next_state_y])) # if done, q_target = reward, else 
-        # if not experience[4]    
+        # if not experience[4]
             # q_target = q_target + discount * np.max(q[:, :, next_state_x, next_state_y].detach().numpy()) ### uhhh that first dim...
         q_pred[:, experience[:, 1]] = q_target # first dim is env idx, bc theres an extra dim for batch size. how to combine ahhhhh
         loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
@@ -223,4 +223,4 @@ with torch.no_grad():
         steps += 1
 
     if done==False:
-        print('failed maybe')
+        print('failed?')

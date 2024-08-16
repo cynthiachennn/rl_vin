@@ -1,53 +1,82 @@
 import sys
-
 import numpy as np
-from dataset import *
-
 import argparse
+import pickle
 
-sys.path.append('.')
-from domains.gridworld import *
-from generators.obstacle_gen import *
-sys.path.remove('.')
+from generators.map_generator import MapGenerator
+from generators.twoD_map_path import TwoDMapPath
 
-from generators.sparse_map import SparseMap
+def main(n_envs=264, size=8, density=20, scale=2, type='sparse'):
+    if type == 'sparse':
+        maps = SparseMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_percent=density, scale=scale)
+    if type == 'small':
+        maps = SmallMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_num=density)
 
-def gen_kentsommer(dom_size= (8, 8), n_domains=5000, max_obs=50, max_obs_size=2):
-    save_path = "dataset/rl/gridworld_{0}x{1}".format(dom_size[0], dom_size[1])
+    # 
 
-    dom = 0
-    images = []
-    goals = []
 
-    while dom <= n_domains:
-        # generate a random domain
-        goal = [np.random.randint(dom_size[0]), np.random.randint(dom_size[1])]
-        obs = obstacles([dom_size[0], dom_size[1]], goal, max_obs_size)
-        n_obs = obs.add_n_rand_obs(max_obs)
-        border_res = obs.add_border()
-        if n_obs == 0 or not border_res:
-            continue
-        im = obs.get_final() # 0 is obstacle 1 is free
+    
+# allow args to be passed in :D
+if __name__ == '__main__':
 
-        images.append(im)
-        goals.append(goal)
-        # G = GridWorld(im, goal[0], goal[1])
-        # data.append((G)) # G includes image, goal, start, and helper functions.
-        # i could even include the obstacle gen in G i guess but its a lot.
-        # guarenteed path from start to goal
-        # actually don't need to return goal since it's in the image?
-        dom += 1
-    # images = np.array(images)
-    # goals = np.array(goals)
-    # np.savez_compressed(save_path, images, goals)
-    return images, goals
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=264)
+    parser.add_argument("--size", "-s", type=int, help="side length of map", default=8)
+    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=20)
+    parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=2)
+    parse.add_argument("--type", "-t", type=str, help="type of environment", default="sparse")
+    args = parser.parse_args()
+    
+    main(args.n_envs, args.size, args.density, args.scale, args.type)
 
-def gen_koosha(num_envs = 64, map_side_len = 16, obstacle_percent = 20, scale = 2):
-    save_path = "dataset/rl/sparsemap_{0}x{1}".format(map_side_len, map_side_len)
-    all_envs = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale)
-    images = [env.grid for env in all_envs]
-    goals = [(env.goal_r, env.goal_c) for env in all_envs]
-    # images = np.array(images)
-    # goals = np.array(goals)
-    # np.savez_compressed(save_path, images, goals)
-    return images, goals
+
+
+
+class SparseMap(MapGenerator):    
+    @staticmethod
+    def genMaps(num_maps = 3, map_side_len = 28, obstacle_percent = 5, scale = 3):  # Sami prefers keeping scale = 1 and make the obstacle_percentage very low
+        small_map_side = int(map_side_len  / scale)
+        layout = np.random.randint(0, 100, size = (num_maps, small_map_side, small_map_side)) < obstacle_percent  #room (empty pixel) -> 0, obstacles and wall -> 1   also we should always add borders
+        large_layout = np.zeros([num_maps, map_side_len, map_side_len], dtype = np.uint) 
+        for r in range(small_map_side):
+            for c in range(small_map_side):
+                large_layout[ : , r * scale : (r + 1) * scale, c * scale : (c + 1) * scale] = layout[:, r, c].reshape(-1, 1, 1) 
+        obstacle_maps = np.ones([num_maps, map_side_len + 2, map_side_len + 2], dtype = np.uint)
+        obstacle_maps [:, 1 : -1 , 1 : -1] = large_layout
+
+        maps = [(grid, SparseMap.genGoal(grid, 80)) for grid in obstacle_maps]
+        
+        return maps
+    
+class SmallMap(MapGenerator):
+    @staticmethod
+    def genMaps(num_maps = 3, map_side_len = 5, obstacle_num = 5):
+        small_maps = np.zeros([num_maps, map_side_len, map_side_len], dtype = np.uint) 
+        for i in range(len(small_maps)): # generate obstacle_num of random obstacles for each map
+            obs_x = np.random.randint(0, map_side_len, obstacle_num)
+            obs_y = np.random.randint(0, map_side_len, obstacle_num)
+            small_maps[i, obs_x, obs_y] = 1
+        obstacle_maps = np.ones([num_maps, map_side_len + 2, map_side_len + 2], dtype = np.uint)
+        obstacle_maps [:, 1 : -1 , 1 : -1] = small_maps
+        maps = [(grid, SmallMap.genGoal(grid, 80)) for grid in obstacle_maps]
+        return maps
+    @staticmethod
+    def genGoal(grid, connection_percent_th = 80):
+        def dfs(x, y):
+            visited[x, y] = True
+            for action in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                if not visited[x + action[0], y + action[1]]:
+                    dfs(x + action[0], y + action[1]) 
+        
+        visited = np.copy(grid)
+        room_xy = np.where(grid == 0) 
+        for _ in range(10):
+            goal_r = np.random.randint(1, grid.shape[0] - 1, 1)[0]
+            goal_c = np.random.randint(1, grid.shape[1] - 1, 1)[0]
+            if grid[goal_r, goal_c]:
+                continue
+            dfs(goal_r, goal_c)
+            if np.mean(visited) > connection_percent_th / 100:
+                break
+        grid[np.where(visited == 0)] = 1
+        return goal_r, goal_c

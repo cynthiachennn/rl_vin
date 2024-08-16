@@ -14,7 +14,8 @@ class World():
         self.discount = 0.99  # um where this stored ... this is universal ?
 
         self.states, self.actions, self.observations, self.T, self.O, self.R, self.prior = self.genPOMDP()
-        # ^ inconsistent notation where genPOMDP uses Z but the constructor uses O
+        self.target = np.zeros((self.n_rows, self. n_cols, 5)) # 5 = n_actions... dunno where to put that, once again.
+        #  ^ inconsistent notation where genPOMDP uses Z but the constructor uses O
 
     # is there benefit to making this a static method ? 
     def rcToRoomIndex(self, r, c):
