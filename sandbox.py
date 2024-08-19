@@ -39,7 +39,7 @@ config = {
     "imsize": map_side_len + 2, 
     "n_act": 5, 
     "lr": 0.005,
-    'epochs': 20,
+    'epochs': 50,
     'batch_size': 128,
     'l_i': 2,
     'l_h': 150,
@@ -53,9 +53,10 @@ optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
 # will clean these up they are just random helper functions 
 class Trajectories(Dataset):
-    def __init__(self, memories, grid_view):
+    def __init__(self, memories, grid_view, targets):
         self.memories = memories
         self.grid_view = grid_view
+        self.targets = targets
     
     def __len__(self):
         return len(self.memories)
@@ -63,17 +64,17 @@ class Trajectories(Dataset):
     def __getitem__(self, idx):
         memories = self.memories[idx]
         grid_view = self.grid_view[idx]
-        return memories, grid_view
+        targets = self.targets[idx]
+        # print(len(memories))
+        # print(len(grid_view))   
+        # print(len(targets))
+        return memories, grid_view, targets
 
-def collate_tensor_fn(batch):
-    # for i in range(len(batch)):
-    #     torch.squeeze(batch[i][1], 0)
-    #     print(len(batch[i][1]))
-    #     print(batch[i][1].shape)
-    #     # print(len(batch[i][1]))
+def collate_tensor_fn(batch): # look into why this is needed at some point... input_view shape is not consistent but idk why.
     mems = np.array([item[0] for item in batch])
     input_views = np.array([torch.squeeze(item[1], 0) for item in batch])
-    return torch.Tensor(mems).to(int), torch.Tensor(input_views)
+    targets = np.array([item[2] for item in batch])
+    return torch.Tensor(mems).to(int), torch.Tensor(input_views), torch.Tensor(targets)
 
 # batched ugh.
 def batchedRoomIndexToRc(grid, room_index):
@@ -84,14 +85,12 @@ def batchedRoomIndexToRc(grid, room_index):
         room_r.append(room_rc[i][0][int(room_index[i])])
         room_c.append(room_rc[i][1][int(room_index[i])])
     return room_r, room_c
-    # return room_rc[range(len(grid)), 0, np.array(room_index)], room_rc[range(len(grid)), 1, np.array(room_index)]
-
 
 exploration_prob = 1
 for epoch in range(config['epochs']):
     print('epoch:', epoch)
     explore_start = datetime.now()
-    data = [[], []]
+    data = [[], [], []]
     for world in worlds:
         start_state = np.random.randint(len(world.states)) # random start state idx
         goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
@@ -101,8 +100,8 @@ for epoch in range(config['epochs']):
         grid_view = np.reshape(world.grid, (1, world.n_rows, world.n_cols))
         reward_view = np.reshape(reward_mapping, (1, world.n_rows, world.n_cols))
         input_view = torch.Tensor(np.concatenate((grid_view, reward_view))) # inlc empty 1 dim
-        # print(input_view.shape)
-        # would be nice to store this/method for this directly in world object
+        # would be nice to store this/method for this directly in world object ?
+        target_values = np.zeros((config['n_act'], world.n_rows, world.n_cols)) # 5 = n_actions
         n_traj = 20
         max_steps = 5000
         for traj in range(n_traj):
@@ -112,6 +111,7 @@ for epoch in range(config['epochs']):
             memories = []
             total_steps = 0
             done = 0
+            value = 0
             # what should i name this function  o m g !
             r, v = model.process_input(input_view[None, :, :, :])
             for i in range(config['k'] - 1):
@@ -120,10 +120,10 @@ for epoch in range(config['epochs']):
             q = model.eval_q(r, v) 
             while done == 0 and total_steps < max_steps:
                 step_time = datetime.now()
+                state_x, state_y = world.roomIndexToRc(current_state)
                 if np.random.rand() < exploration_prob:
                     action = np.random.choice(config['n_act']) # separate this from config... soon.
                 else:
-                    state_x, state_y = world.roomIndexToRc(current_state)
                     _, action = model.get_action(q, state_x, state_y)
                 next_state = np.random.choice(range(len(world.states)), p=world.T[action, current_state]) # next state based on action and current state
                 observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
@@ -134,19 +134,22 @@ for epoch in range(config['epochs']):
                     done = 1
                 memories.append([current_state, action, reward, next_state, done])
                 total_steps += 1
-            # if done == 1: # currently only store info if its successful
-                data[0].extend(memories)
-                data[1].extend([input_view] * len(memories))
+                value = value + reward
+                target_values[action, state_x, state_y] = value
+            # if done == 1: # only store info if its successful
+            data[0].extend(memories)
+            data[1].extend([input_view] * len(memories))
+            data[2].extend([target_values] * len(memories)) 
+            
             # store data as 1 complete trajectory full of multiple memories in each entry
             # can shuffle the trajectories and also the memories within the trajectory ? < but not sure if shuffling memories is gooood tbh
     print('explore time:', datetime.now() - explore_start)
-    dataset = Trajectories(data[0], data[1])
+    dataset = Trajectories(data[0], data[1], data[2])
     dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
     # initialize the model for training after experience collecting is done
     # Trainign???
     train_start = datetime.now()
-    for experience, input_view in dataloader: # automatically shuffles and batches the data maybe ?
-        # since i update weights, do I need to reacalculate all of these ech time omg.
+    for experience, input_view, targets in dataloader: # automatically shuffles and batches the data maybe
         r, v = model.process_input(input_view)
         for i in range(config['k'] - 1):
             q = model.eval_q(r, v)
@@ -158,10 +161,11 @@ for epoch in range(config['epochs']):
         state_x, state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 0]) # should I directly store states as tuple coords? maybe.
         next_state_x, next_state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 3])
         q_pred, _ = model.get_action(q, state_x, state_y)
-        q_target = experience[:, 2] # pull experiences from stored actions
-        q_target = torch.where(experience[:, 4] == 1, q_target, q_target + discount * torch.max(q[:, :, next_state_x, next_state_y])) # if done, q_target = reward, else 
+        # q_target = experience[:, 2] # pull experiences from stored actions
+        # q_target = torch.where(experience[:, 4] == 1, q_target, q_target + discount * torch.max(q[:, :, next_state_x, next_state_y])) # if done, q_target = reward, else 
         # if not experience[4]
             # q_target = q_target + discount * np.max(q[:, :, next_state_x, next_state_y].detach().numpy()) ### uhhh that first dim...
+        q_target = targets[:, experience[:, 1], state_x, state_y]
         q_pred[:, experience[:, 1]] = q_target # first dim is env idx, bc theres an extra dim for batch size. how to combine ahhhhh
         loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
         loss.backward()
