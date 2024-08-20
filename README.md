@@ -8,5 +8,6 @@ Adapting this implementation to work with [koosha66](https://github.com/koosha66
 POMDP format.
 
 # To Do:
-- get this to train on gpu so I can start testing large training size
-- also finish gridworld generation script
+- finish gridworld generation script
+- are there any ways to make this faster still ?
+- clean up code a bit.
