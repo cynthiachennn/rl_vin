@@ -6,3 +6,7 @@ by [@kentsommer](https://github.com/kentsommer/)
 
 Adapting this implementation to work with [koosha66](https://github.com/koosha66/)'s code and the generalized
 POMDP format.
+
+# To Do:
+- get this to train on gpu so I can start testing large training size
+- also finish gridworld generation script

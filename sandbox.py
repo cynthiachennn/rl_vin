@@ -3,44 +3,35 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import Dataset, DataLoader
 from datetime import datetime
+from tqdm import tqdm
 
 from generators.sparse_map import  SparseMap
 from dataset.generate_rl_dataset import SmallMap 
 from model import VIN
 from domains.batch_worlds import World
 
-# generate multiple worlds uh oh
-num_envs = 64
-map_side_len = 8
-obstacle_percent = 20 # make a super small map, but with a fixed number of obstacles not percent based 
-scale = 2
-discount = 0.99
-
-# ok in theory this part goes in another script/ is loaded from a file but ill do that later.
-# envs = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale) # 0 = 0 freespace, 1 = obstacle
-# worlds = [env.genPOMDP(discount=discount) for env in envs] # equivalent to what "gridworld" was, stores all info like T, O, R, etc.
-    # annoying things I might wanna fix/change:
-    # only 4 actions + stay, not "in order"
-    # indexing is [a, s, s'] instead of [s, a, s']
-    # gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
-    # also could remove stuff like "addPath" etc because we don't need expert solvers
+# ok in theory map gen goes in another script/ is loaded from a file but ill do that later.
+# annoying things about the world I might wanna fix/change:
+# only 4 actions + stay, not "in order"
+# indexing is [a, s, s'] instead of [s, a, s']
+# gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
 
 # SMALL MAPS
 map_side_len = 4
 obstacle_num = 4
+num_envs = 64
+discount = 0.99
 envs = SmallMap.genMaps(num_envs, map_side_len, obstacle_num)
 worlds = [World(env[0], env[1][0], env[1][1]) for env in envs]
 # world grids directly from file into my new class
-# worlds = [World(env.grid, env.goal_r, env.goal_c) for env in envs] # essentially makes this
-# one world at a time ?
-# need to pair world info with trajectory info tho
+
+epochs = 50
+batch_size = 128
 
 config = {
     "imsize": map_side_len + 2, 
     "n_act": 5, 
     "lr": 0.005,
-    'epochs': 50,
-    'batch_size': 128,
     'l_i': 2,
     'l_h': 150,
     "l_q": 10,
@@ -53,10 +44,9 @@ optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
 # will clean these up they are just random helper functions 
 class Trajectories(Dataset):
-    def __init__(self, memories, grid_view, targets):
+    def __init__(self, memories, grid_view):
         self.memories = memories
         self.grid_view = grid_view
-        self.targets = targets
     
     def __len__(self):
         return len(self.memories)
@@ -64,17 +54,15 @@ class Trajectories(Dataset):
     def __getitem__(self, idx):
         memories = self.memories[idx]
         grid_view = self.grid_view[idx]
-        targets = self.targets[idx]
         # print(len(memories))
         # print(len(grid_view))   
         # print(len(targets))
-        return memories, grid_view, targets
+        return memories, grid_view
 
 def collate_tensor_fn(batch): # look into why this is needed at some point... input_view shape is not consistent but idk why.
     mems = np.array([item[0] for item in batch])
     input_views = np.array([torch.squeeze(item[1], 0) for item in batch])
-    targets = np.array([item[2] for item in batch])
-    return torch.Tensor(mems).to(int), torch.Tensor(input_views), torch.Tensor(targets)
+    return torch.Tensor(mems).to(int), torch.Tensor(input_views)
 
 # batched ugh.
 def batchedRoomIndexToRc(grid, room_index):
@@ -87,10 +75,11 @@ def batchedRoomIndexToRc(grid, room_index):
     return room_r, room_c
 
 exploration_prob = 1
-for epoch in range(config['epochs']):
+for epoch in range(epochs):
     print('epoch:', epoch)
     explore_start = datetime.now()
-    data = [[], [], []]
+    data = [[], []]
+    count = 0
     for world in worlds:
         start_state = np.random.randint(len(world.states)) # random start state idx
         goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
@@ -101,17 +90,15 @@ for epoch in range(config['epochs']):
         reward_view = np.reshape(reward_mapping, (1, world.n_rows, world.n_cols))
         input_view = torch.Tensor(np.concatenate((grid_view, reward_view))) # inlc empty 1 dim
         # would be nice to store this/method for this directly in world object ?
-        target_values = np.zeros((config['n_act'], world.n_rows, world.n_cols)) # 5 = n_actions
         n_traj = 20
         max_steps = 5000
         for traj in range(n_traj):
             trajectory_time = datetime.now()
             # should i regenerate the start and goal states each time?
             current_state = start_state
-            memories = []
+            memories = np.empty((0, 5)) # zero dimension hmm
             total_steps = 0
             done = 0
-            value = 0
             # what should i name this function  o m g !
             r, v = model.process_input(input_view[None, :, :, :])
             for i in range(config['k'] - 1):
@@ -128,28 +115,31 @@ for epoch in range(config['epochs']):
                 next_state = np.random.choice(range(len(world.states)), p=world.T[action, current_state]) # next state based on action and current state
                 observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
                 reward = world.R[action, current_state, next_state, observation]
-                current_state = next_state
                 # end at goal
-                if current_state == goal_state:
+                if next_state == goal_state:
                     done = 1
-                memories.append([current_state, action, reward, next_state, done])
+                memories = np.vstack((memories, [current_state, action, reward, next_state, done]))
+                current_state = next_state
                 total_steps += 1
-                value = value + reward
-                target_values[action, state_x, state_y] = value
+                count += 1
+
+            # implement "experience replay" to propogate reward values
+            target_values = [np.sum(memories[i:, 2]) for i in range(memories.shape[0])]
+            memories = np.hstack((memories, np.array(target_values)[:, None])) #feels a little convoluted
+            # WARNING: ^ this is later casted to int target can not be a float
             # if done == 1: # only store info if its successful
-            data[0].extend(memories)
-            data[1].extend([input_view] * len(memories))
-            data[2].extend([target_values] * len(memories)) 
-            
+            data[0].extend([memories[i]for i in range(memories.shape[0])])
+            data[1].extend([input_view] * memories.shape[0])
+            # data[2].extend([target_values] * memories.shape[0]) 
             # store data as 1 complete trajectory full of multiple memories in each entry
             # can shuffle the trajectories and also the memories within the trajectory ? < but not sure if shuffling memories is gooood tbh
     print('explore time:', datetime.now() - explore_start)
-    dataset = Trajectories(data[0], data[1], data[2])
-    dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
+    dataset = Trajectories(data[0], data[1])
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
     # initialize the model for training after experience collecting is done
     # Trainign???
     train_start = datetime.now()
-    for experience, input_view, targets in dataloader: # automatically shuffles and batches the data maybe
+    for experience, input_view in tqdm(dataloader): # automatically shuffles and batches the data maybe
         r, v = model.process_input(input_view)
         for i in range(config['k'] - 1):
             q = model.eval_q(r, v)
@@ -161,12 +151,8 @@ for epoch in range(config['epochs']):
         state_x, state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 0]) # should I directly store states as tuple coords? maybe.
         next_state_x, next_state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 3])
         q_pred, _ = model.get_action(q, state_x, state_y)
-        # q_target = experience[:, 2] # pull experiences from stored actions
-        # q_target = torch.where(experience[:, 4] == 1, q_target, q_target + discount * torch.max(q[:, :, next_state_x, next_state_y])) # if done, q_target = reward, else 
-        # if not experience[4]
-            # q_target = q_target + discount * np.max(q[:, :, next_state_x, next_state_y].detach().numpy()) ### uhhh that first dim...
-        q_target = targets[:, experience[:, 1], state_x, state_y]
-        q_pred[:, experience[:, 1]] = q_target # first dim is env idx, bc theres an extra dim for batch size. how to combine ahhhhh
+        q_target = experience[:, 5]
+        q_pred[:, experience[:, 1]] = q_target.to(torch.float) # first dim is env idx, bc theres an extra dim for batch size. how to combine ahhhhh
         loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
         loss.backward()
         optimizer.step()
