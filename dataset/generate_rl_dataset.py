@@ -3,34 +3,9 @@ import numpy as np
 import argparse
 import pickle
 
+sys.path.append('.')
 from generators.map_generator import MapGenerator
-from generators.twoD_map_path import TwoDMapPath
-
-def main(n_envs=264, size=8, density=20, scale=2, type='sparse'):
-    if type == 'sparse':
-        maps = SparseMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_percent=density, scale=scale)
-    if type == 'small':
-        maps = SmallMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_num=density)
-
-    # 
-
-
-    
-# allow args to be passed in :D
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=264)
-    parser.add_argument("--size", "-s", type=int, help="side length of map", default=8)
-    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=20)
-    parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=2)
-    parse.add_argument("--type", "-t", type=str, help="type of environment", default="sparse")
-    args = parser.parse_args()
-    
-    main(args.n_envs, args.size, args.density, args.scale, args.type)
-
-
-
+sys.path.remove('.')
 
 class SparseMap(MapGenerator):    
     @staticmethod
@@ -80,3 +55,30 @@ class SmallMap(MapGenerator):
                 break
         grid[np.where(visited == 0)] = 1
         return goal_r, goal_c
+
+def main(n_envs=1024, size=8, density=20, scale=2, type='sparse'):
+    save_path = f'dataset/rl/{type}_{size}_{density}_{n_envs}.npz' # uhhh
+
+    if type == 'sparse':
+        maps = SparseMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_percent=density, scale=scale)
+    if type == 'small':
+        maps = SmallMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_num=density)
+
+    images = np.array([map[0] for map in maps])
+    goals = np.array([map[1] for map in maps])
+    np.savez_compressed(save_path, images, goals) # img, tuple goal.... idk ....
+
+    
+# allow args to be passed in :D
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=1024)
+    parser.add_argument("--size", "-s", type=int, help="side length of map", default=8)
+    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=20)
+    parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=2)
+    parser.add_argument("--type", "-t", type=str, help="type of environment", default="small")
+    args = parser.parse_args()
+    
+    main(args.n_envs, args.size, args.density, args.scale, args.type)
+

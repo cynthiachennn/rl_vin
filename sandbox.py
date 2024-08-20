@@ -25,19 +25,26 @@ device = (
 )
 
 # SMALL MAPS
-map_side_len = 4
-obstacle_num = 4
-num_envs = 4
-discount = 0.99
-envs = SmallMap.genMaps(num_envs, map_side_len, obstacle_num)
-worlds = [World(env[0], env[1][0], env[1][1]) for env in envs]
+# map_side_len = 4
+# obstacle_num = 4
+# num_envs = 4
+# discount = 0.99
+# envs = SmallMap.genMaps(num_envs, map_side_len, obstacle_num)
+# worlds = [World(env[0], env[1][0], env[1][1]) for env in envs]
 # world grids directly from file into my new class
 
-epochs = 50
+data_file = 'dataset/rl/small_4_4_1024.npz' # type_size_density_n_envs
+with np.load(data_file) as f:
+    envs = f['arr_0']
+    goals = f['arr_1']
+imsize = envs.shape[1]
+worlds = [World(envs[i], goals[i][0], goals[i][1]) for i in range(len(envs))]
+
+epochs = 32
 batch_size = 128
 
 config = {
-    "imsize": map_side_len + 2, 
+    "imsize": imsize, 
     "n_act": 5, 
     "lr": 0.005,
     'l_i': 2,
@@ -176,8 +183,9 @@ for epoch in range(epochs):
 # test >>????
 with torch.no_grad():
     # create new testing env (will perform badly if trained on only one env tho duh)
-    env = SparseMap.genMaps(num_envs, map_side_len, obstacle_percent, scale)[0] # 0 = 0 freespace, 1 = obstacle
-    world = World(env.grid, env.goal_r, env.goal_c)
+    map_side_len, obstacle_num = 4, 4
+    env = SmallMap.genMaps(1, map_side_len, obstacle_num)[0]
+    worlds = World(env[0], env[1][0], env[1][1])  
     # start_state = np.random.randint(len(world.states)) # random start state idx
     # goal_state = SparseMap.rcToRoomIndex(env.grid, env.goal_r, env.goal_c)
 
