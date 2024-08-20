@@ -10,6 +10,7 @@ from dataset.generate_rl_dataset import SmallMap
 from model import VIN
 from domains.batch_worlds import World
 
+rng = np.random.default_rng()
 # ok in theory map gen goes in another script/ is loaded from a file but ill do that later.
 # annoying things about the world I might wanna fix/change:
 # only 4 actions + stay, not "in order"
@@ -39,6 +40,9 @@ with np.load(data_file) as f:
     goals = f['arr_1']
 imsize = envs.shape[1]
 worlds = [World(envs[i], goals[i][0], goals[i][1]) for i in range(len(envs))]
+rng.shuffle(worlds)
+worlds_train = worlds[:int(0.8 * len(worlds))]
+worlds_test = worlds[int(0.8 * len(worlds)):]
 
 epochs = 32
 batch_size = 128
@@ -69,16 +73,7 @@ class Trajectories(Dataset):
     def __getitem__(self, idx):
         memories = self.memories[idx]
         grid_view = self.grid_view[idx]
-        # print(len(memories))
-        # print(len(grid_view))   
-        # print(len(targets))
         return memories, grid_view
-
-def collate_tensor_fn(batch): # look into why this is needed at some point... input_view shape is not consistent but idk why.
-    mems = np.array([item[0] for item in batch])
-    print([batch[i][1].shape for i in range(len(batch))])
-    input_views = np.array([torch.squeeze(item[1], 0) for item in batch])
-    return torch.Tensor(mems).to(int), torch.Tensor(input_views)
 
 # batched ugh.
 def batchedRoomIndexToRc(grid, room_index):
@@ -96,8 +91,8 @@ for epoch in range(epochs):
     explore_start = datetime.now()
     data = [[], []]
     count = 0
-    for world in worlds:
-        start_state = np.random.randint(len(world.states)) # random start state idx
+    for world in worlds_train:
+        start_state = rng.integers(len(world.states)) # random start state idx
         goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
         # create input view < do this before 
         reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
@@ -106,7 +101,7 @@ for epoch in range(epochs):
         reward_view = np.reshape(reward_mapping, (1, world.n_rows, world.n_cols))
         input_view = torch.Tensor(np.concatenate((grid_view, reward_view))).to(device) # inlc empty 1 dim
         # would be nice to store this/method for this directly in world object ?
-        n_traj = 20
+        n_traj = 10
         max_steps = 5000
         for traj in range(n_traj):
             trajectory_time = datetime.now()
@@ -124,13 +119,13 @@ for epoch in range(epochs):
             while done == 0 and total_steps < max_steps:
                 step_time = datetime.now()
                 state_x, state_y = world.roomIndexToRc(current_state)
-                if np.random.rand() < exploration_prob:
-                    action = np.random.choice(config['n_act']) # separate this from config... soon.
+                if rng.random() < exploration_prob:
+                    action = rng.choice(config['n_act']) # separate this from config... soon.
                 else:
                     _, action = model.get_action(q, state_x, state_y)
                     action = action.cpu()
-                next_state = np.random.choice(range(len(world.states)), p=world.T[action, current_state]) # next state based on action and current state
-                observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
+                next_state = rng.choice(range(len(world.states)), p=world.T[action, current_state]) # next state based on action and current state
+                observation = rng.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
                 reward = world.R[action, current_state, next_state, observation]
                 # end at goal
                 if next_state == goal_state:
@@ -154,7 +149,7 @@ for epoch in range(epochs):
     dataset = Trajectories(data[0], data[1])
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) #, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
     # initialize the model for training after experience collecting is done
-    # Trainign???
+    # Training???
     train_start = datetime.now()
     for experience, input_view in tqdm(dataloader): # automatically shuffles and batches the data maybe
         input_view = input_view.to(device)
@@ -182,55 +177,55 @@ for epoch in range(epochs):
 
 # test >>????
 with torch.no_grad():
+    correct = 0
     # create new testing env (will perform badly if trained on only one env tho duh)
-    map_side_len, obstacle_num = 4, 4
-    env = SmallMap.genMaps(1, map_side_len, obstacle_num)[0]
-    worlds = World(env[0], env[1][0], env[1][1])  
-    # start_state = np.random.randint(len(world.states)) # random start state idx
-    # goal_state = SparseMap.rcToRoomIndex(env.grid, env.goal_r, env.goal_c)
+    for world in worlds_test: 
+        start_state = rng.integers(len(world.states)) # random start state idx
+        goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
+        # create input view
+        reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
+        reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+        grid_view = np.reshape(world.grid, (1, 1, world.n_rows, world.n_cols))
+        reward_view = np.reshape(reward_mapping, (1, 1, world.n_rows, world.n_cols))
+        input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
 
-    # create input view
-    reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
-    reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-    grid_view = np.reshape(world.grid, (1, 1, world.n_rows, world.n_cols))
-    reward_view = np.reshape(reward_mapping, (1, 1, world.n_rows, world.n_cols))
-    input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
+        # would be nice to store this/method for this directly in world object
+        # learn world
+        r, v = model.process_input(input_view)
+        for i in range(config['k'] - 1):
+            q = model.eval_q(r, v)
+            v, _ = torch.max(q, dim=1, keepdim=True)
+        q = model.eval_q(r, v) 
 
-    # would be nice to store this/method for this directly in world object
-    # learn world
-    r, v = model.process_input(input_view)
-    for i in range(config['k'] - 1):
-        q = model.eval_q(r, v)
-        v, _ = torch.max(q, dim=1, keepdim=True)
-    q = model.eval_q(r, v) 
+        # get a trajectory
+        pred_traj = []
+        current_state = start_state
+        done = False
+        steps = 0
+        while not done and steps < len(world.states) + 100: # should be able to do it in less than n states right.
+            state_x, state_y = SparseMap.roomIndexToRc(world.grid, current_state)
+            pred_traj.append((state_x, state_y))
+            # print('current state', G.get_coords(current_state))
+            logits, action = model.get_action(q, state_x, state_y) #
+            action = action.detach().numpy()
+            next_state = rng.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
+            observation = rng.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
+            if next_state == goal_state:
+                done = True
+                pred_traj.append(SparseMap.roomIndexToRc(world.grid, next_state))
+            current_state = next_state
+            print(current_state)
+            steps += 1
+        if done == True:
+            correct += 1
+            # visualize world and values ? 
+            fig, ax = plt.subplots()
+            plt.imshow(world.grid.T, cmap='Greys')
+            ax.plot(world.goal_r, world.goal_c, 'ro')
+            fig, ax = plt.subplots()
+            q_max = [[np.max(model.get_action(q, r, c)[0].detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
+            plt.imshow(q_max, cmap='viridis')
+            plt.show()
 
-    # visualize world and values ?
-    fig, ax = plt.subplots()
-    plt.imshow(world.grid.T, cmap='Greys')
-    ax.plot(world.goal_r, world.goal_c, 'ro')
-    fig, ax = plt.subplots()
-    q_max = [[np.max(model.get_action(q, r, c)[0].detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
-    plt.imshow(q_max, cmap='viridis')
-    plt.show()
-    # get a trajectory
-    pred_traj = []
-    current_state = start_state
-    done = False
-    steps = 0
-    while not done and steps < len(world.states) + 100: # should be able to do it in less than n states right.
-        state_x, state_y = SparseMap.roomIndexToRc(world.grid, current_state)
-        pred_traj.append((state_x, state_y))
-        # print('current state', G.get_coords(current_state))
-        logits, action = model.get_action(q, state_x, state_y) #
-        action = action.detach().numpy()
-        next_state = np.random.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
-        observation = np.random.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
-        if next_state == goal_state:
-            done = True
-            pred_traj.append(SparseMap.roomIndexToRc(world.grid, next_state))
-        current_state = next_state
-        print(current_state)
-        steps += 1
-
-    if done==False:
-        print('failed?')
+        if done==False:
+            print('failed?')
