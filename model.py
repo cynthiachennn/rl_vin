@@ -43,16 +43,12 @@ class VIN(nn.Module):
         :param state_x: (batch_sz,), 0 <= state_x < imsize
         :param state_y: (batch_sz,), 0 <= state_y < imsize
         :param k: number of iterations
-        :return: logits and softmaxed logits
+        :return: logits and **argmax** of logits
         """
         r, v = self.process_input(input_view)
 
         # Update q and v values
-        for i in range(k - 1):
-            q = self.eval_q(r, v)
-            v, _ = torch.max(q, dim=1, keepdim=True)
-
-        q = self.eval_q(r, v) # q: (batch_sz, l_q, map_size, map_size)
+        q = self.value_iteration(r, v)
         
         logits, action = self.get_action(q, state_x, state_y)
 
@@ -66,6 +62,13 @@ class VIN(nn.Module):
 
         return r, v
 
+    def value_iteration(self, r, v):
+        for i in range(self.config['k'] - 1):
+            q = self.eval_q(r, v)
+            v, _ = torch.max(q, dim=1, keepdim=True)
+        q = self.eval_q(r, v)
+        return q
+    
     def eval_q(self, r, v):
         return F.conv2d(
             # Stack reward with most recent value

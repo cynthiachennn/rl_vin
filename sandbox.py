@@ -75,7 +75,7 @@ class Trajectories(Dataset):
         grid_view = self.grid_view[idx]
         return memories, grid_view
 
-# batched ugh.
+# wheres a good place to put this lol. sparsemap class as a static function ?
 def batchedRoomIndexToRc(grid, room_index):
     room_rc = [torch.where(grid_i == 0) for grid_i in grid]
     room_r = []
@@ -110,12 +110,8 @@ for epoch in range(epochs):
             memories = np.empty((0, 5), dtype=int) # hope dtype = int does not mess things up
             total_steps = 0
             done = 0
-            # what should i name this function  o m g !
             r, v = model.process_input(input_view[None, :, :, :])
-            for i in range(config['k'] - 1):
-                q = model.eval_q(r, v)
-                v, _ = torch.max(q, dim=1, keepdim=True)
-            q = model.eval_q(r, v) 
+            q = model.value_iteration(r, v)
             while done == 0 and total_steps < max_steps:
                 step_time = datetime.now()
                 state_x, state_y = world.roomIndexToRc(current_state)
@@ -155,10 +151,7 @@ for epoch in range(epochs):
         input_view = input_view.to(device)
         experience = experience.to(int)
         r, v = model.process_input(input_view)
-        for i in range(config['k'] - 1):
-            q = model.eval_q(r, v)
-            v, _ = torch.max(q, dim=1, keepdim=True)
-        q = model.eval_q(r, v) 
+        q = model.value_iteration(r, v)
         # train/learn for each experience
         # experience[current state, action, reward, next_state, done]
         optimizer.zero_grad() # when to do this. now or in traj loops?
@@ -170,10 +163,14 @@ for epoch in range(epochs):
         loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
         loss.backward()
         optimizer.step()
-    exploration_prob = exploration_prob * 0.95 # no real basis for why this. i think ive seen .exp and other things
+    exploration_prob = exploration_prob * 0.99 # no real basis for why this. i think ive seen .exp and other things
     print('training time:', datetime.now() - train_start)
     print('epoch time:', datetime.now() - explore_start)
 
+current_datetime = str(datetime.now().strftime("%Y-%m-%d %H-%M-%S"))
+save_path = 'saved_models/{current_datetime}_{imsize}x{imsize}_{worlds_train.shape[0]}_x{epochs}.pt'
+torch.save(model.state_dict(), save_path)
+model.eval()
 
 # test >>????
 with torch.no_grad():
@@ -189,13 +186,9 @@ with torch.no_grad():
         reward_view = np.reshape(reward_mapping, (1, 1, world.n_rows, world.n_cols))
         input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
 
-        # would be nice to store this/method for this directly in world object
         # learn world
         r, v = model.process_input(input_view)
-        for i in range(config['k'] - 1):
-            q = model.eval_q(r, v)
-            v, _ = torch.max(q, dim=1, keepdim=True)
-        q = model.eval_q(r, v) 
+        q = model.value_iteration(r, v)
 
         # get a trajectory
         pred_traj = []

@@ -10,7 +10,8 @@ POMDP format.
 # To Do:
 - finish gridworld generation script
 - are there any ways to make this faster still ?
-- clean up code a bit.
+- clean up code a bit:
+    - add way to pass arguments
 
 - curricula learning
 - reversal in this? like rotated map etc idkkk :\
