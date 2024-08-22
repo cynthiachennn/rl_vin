@@ -1,5 +1,8 @@
-# a class that stores pomdp info and gridworld info in one ?
-# also we should be able to generate this class with just a grid and a goal
+# annoying things about the world I might wanna fix/change:
+# only 4 actions + stay, not "in order"
+# indexing is [a, s, s'] instead of [s, a, s']
+# gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
+
 import numpy as np 
 
 class World():
@@ -16,6 +19,9 @@ class World():
         self.states, self.actions, self.observations, self.T, self.O, self.R, self.prior = self.genPOMDP()
         self.target = np.zeros((self.n_rows, self. n_cols, 5)) # 5 = n_actions... dunno where to put that, once again.
         #  ^ inconsistent notation where genPOMDP uses Z but the constructor uses O
+
+    # def genGoal(self, connection_percent_th = 80):
+        # pass
 
     # is there benefit to making this a static method ? 
     def rcToRoomIndex(self, r, c):
@@ -53,9 +59,9 @@ class World():
                     T[a, k, end_ind] = 1
 
         ##### Reward
-        R = np.zeros([num_A, num_S, num_S, num_O])  # (action, start_state, next_state, observation) 
+        R = -1 * np.ones([num_A, num_S, num_S, num_O])  # make it so non-goal is punished
         goal_ind = self.rcToRoomIndex(self.goal_r, self.goal_c)
-        R[:, :, goal_ind, :] = 1
+        R[:, :, goal_ind, :] = num_S # make reward proportional to num_S ??? not sure if thats useful haha
 
         #### Observation
         #### TODOL ADD OBS_noise

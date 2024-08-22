@@ -11,11 +11,6 @@ from model import VIN
 from domains.batch_worlds import World
 
 rng = np.random.default_rng()
-# ok in theory map gen goes in another script/ is loaded from a file but ill do that later.
-# annoying things about the world I might wanna fix/change:
-# only 4 actions + stay, not "in order"
-# indexing is [a, s, s'] instead of [s, a, s']
-# gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
 
 device = (
     "cuda"
@@ -24,15 +19,6 @@ device = (
     if torch.backends.mps.is_available()
     else "cpu"
 )
-
-# SMALL MAPS
-# map_side_len = 4
-# obstacle_num = 4
-# num_envs = 4
-# discount = 0.99
-# envs = SmallMap.genMaps(num_envs, map_side_len, obstacle_num)
-# worlds = [World(env[0], env[1][0], env[1][1]) for env in envs]
-# world grids directly from file into my new class
 
 data_file = 'dataset/rl/small_4_4_1024.npz' # type_size_density_n_envs
 with np.load(data_file) as f:

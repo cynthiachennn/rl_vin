@@ -36,6 +36,7 @@ class SmallMap(MapGenerator):
         maps = [(grid, SmallMap.genGoal(grid, 80)) for grid in obstacle_maps]
         return maps
     @staticmethod
+    
     def genGoal(grid, connection_percent_th = 80):
         def dfs(x, y):
             visited[x, y] = True
