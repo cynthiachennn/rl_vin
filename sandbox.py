@@ -44,8 +44,10 @@ config = {
 }
 
 model = VIN(config).to(device)
+parallel_model = torch.nn.DataParallel(model)
+model = parallel_model.module
 criterion = torch.nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
+optimizer = torch.optim.Adam(parallel_model.parameters(), lr=config['lr'])
 
 # will clean these up they are just random helper functions 
 class Trajectories(Dataset):
@@ -155,8 +157,8 @@ for epoch in range(epochs):
 
 current_datetime = str(datetime.now().strftime("%Y-%m-%d %H-%M-%S"))
 save_path = f'saved_models/{current_datetime}_{imsize}x{imsize}_{len(worlds_train)}_x{epochs}.pt'
-torch.save(model.state_dict(), save_path)
-model.eval()
+torch.save(parallel_model.state_dict(), save_path)
+parallel_model.eval()
 
 # test >>????
 with torch.no_grad():
@@ -181,7 +183,7 @@ with torch.no_grad():
         current_state = start_state
         done = False
         steps = 0
-        while not done and steps < len(world.states) + 100: # should be able to do it in less than n states right.
+        while not done and steps < len(world.states): # should be able to do it in less than n states right.
             state_x, state_y = world.roomIndexToRc(world.grid, current_state)
             pred_traj.append((state_x, state_y))
             # print('current state', G.get_coords(current_state))
@@ -193,7 +195,7 @@ with torch.no_grad():
                 done = True
                 pred_traj.append(world.roomIndexToRc(world.grid, next_state))
             current_state = next_state
-            print(current_state)
+            print("state", current_state, "action", action)
             steps += 1
         if done == True:
             correct += 1
