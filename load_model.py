@@ -35,7 +35,7 @@ config = {
     "k": 20,
 }
 
-model_path = 'saved_models/4x4_64env_4traj_32e.pt'
+model_path = 'saved_models/2024-08-22 07-43-55_6x6_51_x32.pt'
 
 model = VIN(config).to(device)
 model.load_state_dict(torch.load(model_path))
@@ -64,7 +64,7 @@ with torch.no_grad():
         current_state = start_state
         done = False
         steps = 0
-        while not done and steps < len(world.states) + 100: # should be able to do it in less than n states right.
+        while not done and steps < len(world.states) + 20: # should be able to do it in less than n states right.
             state_x, state_y = world.roomIndexToRc(current_state)
             pred_traj.append((state_x, state_y))
             # print('current state', G.get_coords(current_state))

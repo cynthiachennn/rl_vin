@@ -20,8 +20,12 @@ device = (
     else "cpu"
 )
 
-data_file = 'dataset/rl/small_4_4_64.npz' # type_size_density_n_envs
-with np.load(data_file) as f:
+print(device)
+print ("NUM:", torch.cuda.device_count())
+
+# check multi gpu code in 
+datafile = 'dataset/rl/small_4_4_1024.npz' # type_size_density_n_envs
+with np.load(datafile) as f:
     envs = f['arr_0']
     goals = f['arr_1']
 imsize = envs.shape[1]
@@ -138,8 +142,6 @@ for epoch in range(epochs):
     for experience, input_view in tqdm(dataloader): # automatically shuffles and batches the data maybe
         input_view = input_view.to(device)
         experience = experience.to(int)
-        r, v = model.process_input(input_view)
-        q = model.value_iteration(r, v)
         # train/learn for each experience
         # experience[current state, action, reward, next_state, done]
         optimizer.zero_grad() # when to do this. now or in traj loops?
@@ -166,7 +168,7 @@ with torch.no_grad():
     # create new testing env (will perform badly if trained on only one env tho duh)
     for world in worlds_test: 
         start_state = rng.integers(len(world.states)) # random start state idx
-        goal_state = world.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
+        goal_state = world.rcToRoomIndex(world.goal_r, world.goal_c)
         # create input view
         reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
         reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
@@ -183,17 +185,17 @@ with torch.no_grad():
         current_state = start_state
         done = False
         steps = 0
-        while not done and steps < len(world.states): # should be able to do it in less than n states right.
-            state_x, state_y = world.roomIndexToRc(world.grid, current_state)
+        while not done and steps < len(world.states) + 20: # should be able to do it in less than n states right.
+            state_x, state_y = world.roomIndexToRc(current_state)
             pred_traj.append((state_x, state_y))
             # print('current state', G.get_coords(current_state))
             logits, action = model.get_action(q, state_x, state_y) #
-            action = action.cpu() # .detach().numpy()
-            next_state = rng.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
+            action = action.cpu() # detach().numpy()
+            next_state = rng.choice(range(len(world.states)), p=world.T[action, current_state]) # next state based on action and current state
             observation = rng.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
             if next_state == goal_state:
                 done = True
-                pred_traj.append(world.roomIndexToRc(world.grid, next_state))
+                pred_traj.append(world.roomIndexToRc(next_state))
             current_state = next_state
             print("state", current_state, "action", action)
             steps += 1
@@ -204,7 +206,7 @@ with torch.no_grad():
             plt.imshow(world.grid.T, cmap='Greys')
             ax.plot(world.goal_r, world.goal_c, 'ro')
             fig, ax = plt.subplots()
-            q_max = [[np.max(model.get_action(q, r, c)[0].detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
+            q_max = [[np.max(model.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
             plt.imshow(q_max, cmap='viridis')
             plt.show()
 

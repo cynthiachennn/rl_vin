@@ -34,7 +34,12 @@ class World():
     
     def roomIndexToRc(self, room_index):
         return self.room_rc[0][room_index], self.room_rc[1][room_index]
-      
+    
+    def getInputView(self):
+        for a in actions:
+            prob_a = self.T[a, s, s]
+        ### wip
+
     def genPOMDP(self, discount = .99, T_noise = 0, O_noise = 0):
         ##### basics:
         states = ["s_" + str(x) + "_" + str(y) for x, y in zip(self.room_rc[0], self.room_rc[1])] 
