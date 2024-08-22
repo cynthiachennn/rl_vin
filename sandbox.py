@@ -20,7 +20,7 @@ device = (
     else "cpu"
 )
 
-data_file = 'dataset/rl/small_4_4_1024.npz' # type_size_density_n_envs
+data_file = 'dataset/rl/small_4_4_64.npz' # type_size_density_n_envs
 with np.load(data_file) as f:
     envs = f['arr_0']
     goals = f['arr_1']
@@ -31,7 +31,7 @@ worlds_train = worlds[:int(0.8 * len(worlds))]
 worlds_test = worlds[int(0.8 * len(worlds)):]
 
 epochs = 32
-batch_size = 128
+batch_size = 32
 
 config = {
     "imsize": imsize, 
@@ -87,7 +87,7 @@ for epoch in range(epochs):
         reward_view = np.reshape(reward_mapping, (1, world.n_rows, world.n_cols))
         input_view = torch.Tensor(np.concatenate((grid_view, reward_view))).to(device) # inlc empty 1 dim
         # would be nice to store this/method for this directly in world object ?
-        n_traj = 10
+        n_traj = 4
         max_steps = 5000
         for traj in range(n_traj):
             trajectory_time = datetime.now()
@@ -154,7 +154,7 @@ for epoch in range(epochs):
     print('epoch time:', datetime.now() - explore_start)
 
 current_datetime = str(datetime.now().strftime("%Y-%m-%d %H-%M-%S"))
-save_path = 'saved_models/{current_datetime}_{imsize}x{imsize}_{worlds_train.shape[0]}_x{epochs}.pt'
+save_path = f'saved_models/{current_datetime}_{imsize}x{imsize}_{len(worlds_train)}_x{epochs}.pt'
 torch.save(model.state_dict(), save_path)
 model.eval()
 
@@ -164,13 +164,13 @@ with torch.no_grad():
     # create new testing env (will perform badly if trained on only one env tho duh)
     for world in worlds_test: 
         start_state = rng.integers(len(world.states)) # random start state idx
-        goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
+        goal_state = world.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
         # create input view
         reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
         reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
         grid_view = np.reshape(world.grid, (1, 1, world.n_rows, world.n_cols))
         reward_view = np.reshape(reward_mapping, (1, 1, world.n_rows, world.n_cols))
-        input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)) # inlc empty 1 dim
+        input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)).to(device) # inlc empty 1 dim
 
         # learn world
         r, v = model.process_input(input_view)
@@ -182,16 +182,16 @@ with torch.no_grad():
         done = False
         steps = 0
         while not done and steps < len(world.states) + 100: # should be able to do it in less than n states right.
-            state_x, state_y = SparseMap.roomIndexToRc(world.grid, current_state)
+            state_x, state_y = world.roomIndexToRc(world.grid, current_state)
             pred_traj.append((state_x, state_y))
             # print('current state', G.get_coords(current_state))
             logits, action = model.get_action(q, state_x, state_y) #
-            action = action.detach().numpy()
+            action = action.cpu() # .detach().numpy()
             next_state = rng.choice(range(world.n_states), p=world.T[action, current_state]) # next state based on action and current state
             observation = rng.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
             if next_state == goal_state:
                 done = True
-                pred_traj.append(SparseMap.roomIndexToRc(world.grid, next_state))
+                pred_traj.append(world.roomIndexToRc(world.grid, next_state))
             current_state = next_state
             print(current_state)
             steps += 1
@@ -208,3 +208,5 @@ with torch.no_grad():
 
         if done==False:
             print('failed?')
+
+print('accuracy:', correct/len(worlds_train))

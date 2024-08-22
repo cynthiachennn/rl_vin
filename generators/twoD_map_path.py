@@ -12,7 +12,7 @@ import sys
 sys.path.append('..')
 sys.path.append('POMDP-Pairwise-Net/')
 from generators.map_generator import MapGenerator
-from domains.pomdp import POMDP
+# from domains.pomdp import POMDP
 
 
 
@@ -88,7 +88,8 @@ class TwoDMapPath():
         
         prior = np.ones(num_S) / (num_S - 1)
         prior[goal_ind]  = 0
-        return POMDP(states, actions, observations, T, Z, R , discount, prior) 
+        return states, actions, observations, T, Z, R, discount, prior
+        # return POMDP(states, actions, observations, T, Z, R , discount, prior) 
 
     @staticmethod
     def load_datasetBel(file_name, expert_solver = "Pairwise", path_len_max = 45, path_inds = np.array([0, 5], dtype = np.int64), max_num_path = 5000):
