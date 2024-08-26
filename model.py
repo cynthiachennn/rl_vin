@@ -52,7 +52,7 @@ class VIN(nn.Module):
         
         logits, action = self.get_action(q, state_x, state_y)
 
-        return q, logits, action
+        return logits, action
     
     def process_input(self, input_view):
         h = self.h(input_view)  # Intermediate output

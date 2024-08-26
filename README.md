@@ -8,7 +8,8 @@ Adapting this implementation to work with [koosha66](https://github.com/koosha66
 POMDP format.
 
 # To Do:
-- are there any ways to make this faster still ?
+- use dataparallel to increase speed
+- calculate trajectories in sequence instead of seperately
 - clean up code a bit:
     - add way to pass arguments
 

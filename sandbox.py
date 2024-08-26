@@ -143,6 +143,8 @@ for epoch in range(epochs):
         input_view = input_view.to(device)
         experience = experience.to(int)
         # train/learn for each experience
+        r, v = model.process_input(input_view)
+        q = model.value_iteration(r, v)
         # experience[current state, action, reward, next_state, done]
         optimizer.zero_grad() # when to do this. now or in traj loops?
         state_x, state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 0]) # should I directly store states as tuple coords? maybe.
