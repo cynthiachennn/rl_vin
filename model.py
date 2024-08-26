@@ -63,16 +63,29 @@ class VIN(nn.Module):
                     action = self.rng.choice(self.n_act) # hh storing everything in self.
                 else:
                     logits, action = self.get_action(q, state_x, state_y)
-            else:
+            else: # test = true means always follow policy
                 logits, action = self.get_action(q, state_x, state_y)
             next_state, reward, done = self.move(world, action, state_x, state_y)
             trajectory = np.vstack((trajectory, [current_state, action, reward, next_state, done]))
             current_state = next_state
             total_steps += 1
         
-        target_values = [np.sum(trajectory[i:, 2]) for i in range(trajectory.shape[0])]
-        inputView = inputView.repeat(trajectory.shape[0], 1, 1, 1)
-        return inputView, trajectory, target_values
+        trajectory = trajectory.astype(int)
+
+        if test == False:
+            q_target = [np.sum(trajectory[i:, 2]) for i in range(trajectory.shape[0])]
+            pred_values = torch.empty((0))
+            for episode in trajectory:
+                state_x, state_y = world.roomIndexToRc(episode[0])
+                q_pred, _ = self.get_action(q, state_x, state_y)
+                pred_values = torch.cat((pred_values, q_pred))
+            target_values = torch.clone(pred_values)
+            target_values[:, trajectory[:, 1]] = torch.Tensor(q_target).to(self.device)
+            
+            return torch.stack((pred_values, target_values))
+        
+        if test == True:
+            return trajectory
     
     def process_input(self, inputView):
         h = self.h(inputView)  # Intermediate output

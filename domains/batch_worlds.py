@@ -35,6 +35,17 @@ class World():
     def roomIndexToRc(self, room_index):
         return self.room_rc[0][room_index], self.room_rc[1][room_index]
     
+    @staticmethod
+    def batchedRoomIndexToRc(grid, room_index):
+        room_rc = [np.where(grid_i == 0) for grid_i in grid]
+        room_r = []
+        room_c = []
+        for i in range(len(grid)):
+            room_r.append(room_rc[i][0][int(room_index[i])])
+            room_c.append(room_rc[i][1][int(room_index[i])])
+        return room_r, room_c
+
+    
     def getInputView(self):
         reward_mapping = -1 * np.ones(self.grid.shape) # -1 for freespace
         reward_mapping[self.goal_r, self.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
