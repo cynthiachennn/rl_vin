@@ -37,7 +37,12 @@ class VIN(nn.Module):
             torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
         self.sm = nn.Softmax(dim=1)
 
-    def forward(self, input_view, state_x, state_y, k):
+        self.exploration_prob = 1 # start with only exploring
+        self.rng = np.random.default_rng() # should i pass this in... ? ..
+        self.n_act = config['n_act']
+        self.device = config['device']
+
+    def forward(self, world, current_state, max_steps, test=False):
         """
         :param input_view: (batch_sz, imsize, imsize)
         :param state_x: (batch_sz,), 0 <= state_x < imsize
@@ -45,17 +50,32 @@ class VIN(nn.Module):
         :param k: number of iterations
         :return: logits and **argmax** of logits
         """
-        r, v = self.process_input(input_view)
-
-        # Update q and v values
+        trajectory = np.empty((0, 5), dtype=int)
+        total_steps = 0
+        done = 0
+        inputView = torch.Tensor(world.inputView)
+        r, v = self.process_input(inputView)
         q = self.value_iteration(r, v)
+        while done == 0 and total_steps < max_steps:
+            state_x, state_y = world.roomIndexToRc(current_state)
+            if test == False:
+                if self.rng.random() < self.exploration_prob:
+                    action = self.rng.choice(self.n_act) # hh storing everything in self.
+                else:
+                    logits, action = self.get_action(q, state_x, state_y)
+            else:
+                logits, action = self.get_action(q, state_x, state_y)
+            next_state, reward, done = self.move(world, action, state_x, state_y)
+            trajectory = np.vstack((trajectory, [current_state, action, reward, next_state, done]))
+            current_state = next_state
+            total_steps += 1
         
-        logits, action = self.get_action(q, state_x, state_y)
-
-        return logits, action
+        target_values = [np.sum(trajectory[i:, 2]) for i in range(trajectory.shape[0])]
+        inputView = inputView.repeat(trajectory.shape[0], 1, 1, 1)
+        return inputView, trajectory, target_values
     
-    def process_input(self, input_view):
-        h = self.h(input_view)  # Intermediate output
+    def process_input(self, inputView):
+        h = self.h(inputView)  # Intermediate output
         r = self.r(h)           # Reward
         q = self.q(r)           # Initial Q value from reward
         v, _ = torch.max(q, dim=1, keepdim=True)
@@ -85,3 +105,15 @@ class VIN(nn.Module):
         logits = self.fc(q_out)  # q_out to actions
         action = torch.argmax(logits) # orignal action has nn.softmax, which i could np.choice with p=action to choose from distribution instead ? 
         return logits, action
+
+    def move(self, world, action, state_x, state_y):
+        current_state = world.rcToRoomIndex(state_x, state_y)
+        next_state = self.rng.choice(range(len(world.states)), p=world.T[action, current_state])
+        # observation = self.rng.choice(range(len(world.observations)), p=world.O[action, next_state])
+        reward = world.R[action, current_state, next_state, 0] # 0 for now since they're all the same, but should be based on observation
+        if state_x == world.goal_r and state_y == world.goal_c:
+            done = 1
+        else:
+            done = 0
+        
+        return next_state, reward, done

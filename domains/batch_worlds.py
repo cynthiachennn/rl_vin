@@ -17,7 +17,7 @@ class World():
         self.discount = 0.99  # um where this stored ... this is universal ?
 
         self.states, self.actions, self.observations, self.T, self.O, self.R, self.prior = self.genPOMDP()
-        self.target = np.zeros((self.n_rows, self. n_cols, 5)) # 5 = n_actions... dunno where to put that, once again.
+        self.inputView = self.getInputView()
         #  ^ inconsistent notation where genPOMDP uses Z but the constructor uses O
 
     # def genGoal(self, connection_percent_th = 80):
@@ -36,9 +36,11 @@ class World():
         return self.room_rc[0][room_index], self.room_rc[1][room_index]
     
     def getInputView(self):
-        for a in actions:
-            prob_a = self.T[a, s, s]
-        ### wip
+        reward_mapping = -1 * np.ones(self.grid.shape) # -1 for freespace
+        reward_mapping[self.goal_r, self.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+        grid_view = np.reshape(self.grid, (1, 1, self.n_rows, self.n_cols))
+        reward_view = np.reshape(reward_mapping, (1, 1, self.n_rows, self.n_cols))
+        return np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
 
     def genPOMDP(self, discount = .99, T_noise = 0, O_noise = 0):
         ##### basics:

@@ -15,8 +15,8 @@ rng = np.random.default_rng()
 device = (
     "cuda"
     if torch.cuda.is_available()
-    else "mps"
-    if torch.backends.mps.is_available()
+    # else "mps"
+    # if torch.backends.mps.is_available()
     else "cpu"
 )
 
@@ -39,6 +39,7 @@ batch_size = 32
 
 config = {
     "imsize": imsize, 
+    "device": device,
     "n_act": 5, 
     "lr": 0.005,
     'l_i': 2,
@@ -55,17 +56,19 @@ optimizer = torch.optim.Adam(parallel_model.parameters(), lr=config['lr'])
 
 # will clean these up they are just random helper functions 
 class Trajectories(Dataset):
-    def __init__(self, memories, grid_view):
+    def __init__(self, inputView, memories, target_values):
+        self.inputView = inputView
         self.memories = memories
-        self.grid_view = grid_view
+        self.target_values = target_values
     
     def __len__(self):
         return len(self.memories)
     
     def __getitem__(self, idx):
+        inputView = self.inputView[idx]
         memories = self.memories[idx]
-        grid_view = self.grid_view[idx]
-        return memories, grid_view
+        target_values = self.target_values[idx]
+        return inputView, memories, target_values
 
 # wheres a good place to put this lol. sparsemap class as a static function ?
 def batchedRoomIndexToRc(grid, room_index):
@@ -81,77 +84,40 @@ exploration_prob = 1
 for epoch in range(epochs):
     print('epoch:', epoch)
     explore_start = datetime.now()
-    data = [[], []]
-    count = 0
+    data = [[], [], []]
     for world in worlds_train:
         start_state = rng.integers(len(world.states)) # random start state idx
-        goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)
-        # create input view < do this before 
-        reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
-        reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-        grid_view = np.reshape(world.grid, (1, world.n_rows, world.n_cols))
-        reward_view = np.reshape(reward_mapping, (1, world.n_rows, world.n_cols))
-        input_view = torch.Tensor(np.concatenate((grid_view, reward_view))).to(device) # inlc empty 1 dim
+        goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)        
         # would be nice to store this/method for this directly in world object ?
         n_traj = 4
         max_steps = 5000
         for traj in range(n_traj):
-            trajectory_time = datetime.now()
-            # should i regenerate the start and goal states each time?
-            current_state = start_state
-            memories = np.empty((0, 5), dtype=int) # hope dtype = int does not mess things up
-            total_steps = 0
-            done = 0
-            r, v = model.process_input(input_view[None, :, :, :])
-            q = model.value_iteration(r, v)
-            while done == 0 and total_steps < max_steps:
-                step_time = datetime.now()
-                state_x, state_y = world.roomIndexToRc(current_state)
-                if rng.random() < exploration_prob:
-                    action = rng.choice(config['n_act']) # separate this from config... soon.
-                else:
-                    _, action = model.get_action(q, state_x, state_y)
-                    action = action.cpu()
-                next_state = rng.choice(range(len(world.states)), p=world.T[action, current_state]) # next state based on action and current state
-                observation = rng.choice(range(len(world.observations)), p=world.O[action, next_state]) # um what are these observations/what do they mean...
-                reward = world.R[action, current_state, next_state, observation]
-                # end at goal
-                if next_state == goal_state:
-                    done = 1
-                memories = np.vstack((memories, [current_state, action, reward, next_state, done]))
-                current_state = next_state
-                total_steps += 1
-                count += 1
-
-            # implement "experience replay" to propogate reward values
-            target_values = [np.sum(memories[i:, 2]) for i in range(memories.shape[0])]
-            memories = np.hstack((memories, np.array(target_values)[:, None])) #feels a little convoluted
-            # WARNING: ^ this is later casted to int target can not be a float
-            # if done == 1: # only store info if its successful
-            data[0].extend([memories[i]for i in range(memories.shape[0])])
-            data[1].extend([input_view] * memories.shape[0])
+            inputViews, trajectory, target_values = model(world, start_state, max_steps)
+            data[0].extend(inputViews)
+            data[1].extend(trajectory)
+            data[2].extend(target_values)
             # data[2].extend([target_values] * memories.shape[0]) 
             # store data as 1 complete trajectory full of multiple memories in each entry
             # can shuffle the trajectories and also the memories within the trajectory ? < but not sure if shuffling memories is gooood tbh
     print('explore time:', datetime.now() - explore_start)
-    dataset = Trajectories(data[0], data[1])
+    # print(len(data[0]), len(data[1]), len(data[2]))
+    dataset = Trajectories(data[0], data[1], data[2])
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True) #, collate_fn=collate_tensor_fn) #, collate_fn=custom_collate_fn)
     # initialize the model for training after experience collecting is done
     # Training???
     train_start = datetime.now()
-    for experience, input_view in tqdm(dataloader): # automatically shuffles and batches the data maybe
-        input_view = input_view.to(device)
+    for inputView, experience, target in tqdm(dataloader): # automatically shuffles and batches the data maybe
+        inputView = inputView.to(device)
         experience = experience.to(int)
         # train/learn for each experience
-        r, v = model.process_input(input_view)
+        r, v = model.process_input(inputView)
         q = model.value_iteration(r, v)
         # experience[current state, action, reward, next_state, done]
         optimizer.zero_grad() # when to do this. now or in traj loops?
-        state_x, state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 0]) # should I directly store states as tuple coords? maybe.
-        next_state_x, next_state_y = batchedRoomIndexToRc(input_view[:, 0], experience[:, 3])
+        state_x, state_y = batchedRoomIndexToRc(inputView[:, 0], experience[:, 0]) # should I directly store states as tuple coords? maybe.
+        next_state_x, next_state_y = batchedRoomIndexToRc(inputView[:, 0], experience[:, 3])
         q_pred, _ = model.get_action(q, state_x, state_y)
-        q_target = experience[:, 5]
-        q_pred[:, experience[:, 1]] = q_target.to(torch.float).to(device) # to.device?
+        q_pred[:, experience[:, 1]] = target.to(torch.float).to(device) # to.device?
         loss = criterion(model.get_action(q, state_x, state_y)[0], q_pred)
         loss.backward()
         optimizer.step()
@@ -172,14 +138,8 @@ with torch.no_grad():
         start_state = rng.integers(len(world.states)) # random start state idx
         goal_state = world.rcToRoomIndex(world.goal_r, world.goal_c)
         # create input view
-        reward_mapping = -1 * np.ones(world.grid.shape) # -1 for freespace
-        reward_mapping[world.goal_r, world.goal_c] = 10 # 10 at goal, if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-        grid_view = np.reshape(world.grid, (1, 1, world.n_rows, world.n_cols))
-        reward_view = np.reshape(reward_mapping, (1, 1, world.n_rows, world.n_cols))
-        input_view = torch.Tensor(np.concatenate((grid_view, reward_view), axis=1)).to(device) # inlc empty 1 dim
-
         # learn world
-        r, v = model.process_input(input_view)
+        r, v = model.process_input(torch.Tensor(world.inputView.to(device)))
         q = model.value_iteration(r, v)
 
         # get a trajectory
