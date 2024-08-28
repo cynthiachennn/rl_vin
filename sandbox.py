@@ -5,7 +5,6 @@ from torch.utils.data import Dataset, DataLoader
 from datetime import datetime
 from tqdm import tqdm
 
-from generators.sparse_map import  SparseMap
 from dataset.generate_dataset import SmallMap 
 from model import VIN
 from domains.Worlds import World
@@ -23,7 +22,6 @@ device = (
 print(device)
 print ("NUM:", torch.cuda.device_count())
 
-# check multi gpu code in 
 datafile = 'dataset/rl/small_4_4_1024.npz' # type_size_density_n_envs
 with np.load(datafile) as f:
     envs = f['arr_0']

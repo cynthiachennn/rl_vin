@@ -17,7 +17,7 @@ class World():
         self.discount = 0.99  # um where this stored ... this is universal ?
 
         self.states, self.actions, self.observations, self.T, self.O, self.R, self.prior = self.genPOMDP()
-        self.inputView = self.getInputView()
+        self.input_view = self.get_input_view()
         #  ^ inconsistent notation where genPOMDP uses Z but the constructor uses O
 
     # def genGoal(self, connection_percent_th = 80):

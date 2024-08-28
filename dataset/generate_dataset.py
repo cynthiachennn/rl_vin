@@ -19,8 +19,7 @@ class SparseMap(MapGenerator):
         obstacle_maps = np.ones([num_maps, map_side_len + 2, map_side_len + 2], dtype = np.uint)
         obstacle_maps [:, 1 : -1 , 1 : -1] = large_layout
 
-        maps = [(grid, SparseMap.genGoal(grid, 80)) for grid in obstacle_maps]
-        
+        maps = [SparseMap.genGoal(grid, 80) for grid in obstacle_maps]
         return maps
     
 class SmallMap(MapGenerator):
@@ -33,10 +32,10 @@ class SmallMap(MapGenerator):
             small_maps[i, obs_x, obs_y] = 1
         obstacle_maps = np.ones([num_maps, map_side_len + 2, map_side_len + 2], dtype = np.uint)
         obstacle_maps [:, 1 : -1 , 1 : -1] = small_maps
-        maps = [(grid, SmallMap.genGoal(grid, 80)) for grid in obstacle_maps]
+        maps = [SmallMap.genGoal(grid, 80) for grid in obstacle_maps]
         return maps
-    @staticmethod
     
+    @staticmethod
     def genGoal(grid, connection_percent_th = 80):
         def dfs(x, y):
             visited[x, y] = True
@@ -55,26 +54,28 @@ class SmallMap(MapGenerator):
             if np.mean(visited) > connection_percent_th / 100:
                 break
         grid[np.where(visited == 0)] = 1
-        return goal_r, goal_c
+        grid[goal_r, goal_c] = 2
+
+        return grid
 
 def main(n_envs=1024, size=8, density=20, scale=2, type='sparse'):
-    save_path = f'dataset/saved_worlds/{type}_{size}_{density}_{n_envs}.npz' # uhhh
+    save_path = f'dataset/saved_worlds/{type}_{size}_{density}_{n_envs}' # uhhh
 
     if type == 'sparse':
         maps = SparseMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_percent=density, scale=scale)
     if type == 'small':
         maps = SmallMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_num=density)
 
-    images = np.array([map[0] for map in maps])
-    goals = np.array([map[1] for map in maps])
-    np.savez_compressed(save_path, images, goals) # img, tuple goal.... idk ....
+    maps = np.array(maps)
+
+    np.save(save_path, maps)
 
     
 # allow args to be passed in :D
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=1024)
+    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=64)
     parser.add_argument("--size", "-s", type=int, help="side length of map", default=4)
     parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=4)
     parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=1)

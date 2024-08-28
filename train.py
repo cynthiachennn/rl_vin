@@ -10,18 +10,6 @@ from domains.Worlds import World
 
 rng = np.random.default_rng() # is this bad to do?
 
-def load_data(datafile):
-    with np.load(datafile) as f:
-        envs = f['arr_0']
-        goals = f['arr_1']
-    imsize = envs.shape[1]
-    worlds = [World(envs[i], goals[i][0], goals[i][1]) for i in range(len(envs))]
-    rng.shuffle(worlds)
-    worlds_train = worlds[:int(0.8 * len(worlds))]
-    worlds_test = worlds[int(0.8 * len(worlds)):]
-    return worlds_train, worlds_test, imsize
-
-
 def train(worlds_train, model, config, criterion, optimizer, epochs, batch_size):
     exploration_prob = 1
     for epoch in range(epochs):
@@ -29,13 +17,27 @@ def train(worlds_train, model, config, criterion, optimizer, epochs, batch_size)
         explore_start = datetime.now()
         data = torch.empty((2, 0, config['n_act'])).to(config['device']) # stop using config['n_act'] !!!
         for world in worlds_train:
-            start_state = rng.integers(len(world.states)) # random start state idx
-            goal_state = world.rcToRoomIndex(world.goal_r, world.goal_c)        
-            # would be nice to store this/method for this directly in world object ?
+            # pick a random free state for the start state
+            free = False
+            while free == False: 
+                start_x, start_y = rng.integers(world.shape[0]), rng.integers(world.shape[1])
+                if world[start_x, start_y] == 0:
+                    free = True
+            goal_x, goal_y = np.where(world == 2)
+
+            # create input view
+            reward_mapping = -1 * np.ones(world.shape) # -1 for freespace
+            reward_mapping[goal_x, goal_y] = 20 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+            world[goal_x, goal_y] = 0 # remove goal from grid view
+            grid_view = np.reshape(world, (1, 1, world.shape[0], world.shape[1]))
+            reward_view = np.reshape(reward_mapping, (1, 1, world.shape[0], world.shape[1]))
+            input_view = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
+            input_view = torch.Tensor(input_view)
+
             n_traj = 4
             max_steps = 5000
             for traj in range(n_traj):
-                values = model(world, start_state, max_steps)
+                values = model(input_view, start_x, start_y, max_steps)
                 data = torch.cat((data, values), dim=1)
                 # store data as 1 complete trajectory full of multiple memories in each entry
                 # can shuffle the trajectories and also the memories within the trajectory ? < but not sure if shuffling memories is gooood tbh
@@ -57,26 +59,40 @@ def test(worlds_test, model):
     with torch.no_grad():
         correct = 0
         # create new testing env (will perform badly if trained on only one env tho duh)
-        for world in worlds_test: 
-            start_state = rng.integers(len(world.states)) # random start state idx
-            goal_state = world.rcToRoomIndex(world.goal_r, world.goal_c)
+        for world in worlds_test:
+            # pick a random free state for the start state
+            free = False
+            while free == False:
+                start_x, start_y = rng.integers(world.shape[0]), rng.integers(world.shape[1])
+                if world[start_x, start_y] == 0:
+                    free = True
+            goal_x, goal_y = np.where(world == 2)
+
             # create input view
-            trajectory = model(world, start_state, len(world.states), test=True)
+            reward_mapping = -1 * np.ones(world.shape) # -1 for freespace
+            reward_mapping[goal_x, goal_y] = 20 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+            world[goal_x, goal_y] = 0 # remove goal from grid view
+            grid_view = np.reshape(world, (1, 1, world.shape[0], world.shape[1]))
+            reward_view = np.reshape(reward_mapping, (1, 1, world.shape[0], world.shape[1]))
+            input_view = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
+            input_view = torch.Tensor(input_view)
+
+            trajectory = model(input_view, start_x, start_y, world[0]*world[1], test=True) # max steps = size of world?
             if trajectory[-1, 4] == 1:
                 print('success!')
                 correct += 1
 
                 # print trajectory at least
-                print('states:', trajectory[:, 0])
-                print('actions:', trajectory[:, 1])
+                print('states:', trajectory[:, 0], trajectory[:, 1])
+                print('actions:', trajectory[:, 2])
 
                 # visualize world and values ? 
-                r, v = model.module.process_input(torch.Tensor(world.inputView))
+                r, v = model.module.process_input(input_view)
                 q = model.module.value_iteration(r, v)
 
                 fig, ax = plt.subplots()
-                plt.imshow(world.grid.T, cmap='Greys')
-                ax.plot(world.goal_r, world.goal_c, 'ro')
+                plt.imshow(world.T, cmap='Greys')
+                ax.plot(goal_x, goal_y, 'ro')
                 fig, ax = plt.subplots()
                 q_max = [[np.max(model.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
                 plt.imshow(q_max, cmap='viridis')
@@ -93,8 +109,14 @@ def main(datafile, epochs, batch_size):
         if torch.cuda.is_available()
         else "cpu"
     )
-
-    worlds_train, worlds_test, imsize = load_data(datafile)
+    
+    worlds = np.load(datafile)
+    worlds.shape
+    rng.shuffle(worlds)
+    imsize = worlds[0].shape[0]
+    train_size = 0.8 # part of parameters (?) so should this even stay here?
+    worlds_train = worlds[:int(len(worlds)*train_size)]
+    worlds_test = worlds[int(len(worlds)*train_size):]
 
     config = {
         "device": device,
@@ -123,7 +145,7 @@ def main(datafile, epochs, batch_size):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_4_64.npz')
+    parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_4_64.npy')
     parser.add_argument('--epochs', '-e', default=32)
     parser.add_argument('--batch_size', '-b', default=32)
     args = parser.parse_args()

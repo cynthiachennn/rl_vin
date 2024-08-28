@@ -1,5 +1,5 @@
 import numpy as np
-
+# this file and generate_dataset.py are somewhat redundant... should probably seperate out the classes in generate_dataset from the generation file...
 
 class MapGenerator():
     @staticmethod
@@ -13,7 +13,7 @@ class MapGenerator():
         visited = np.copy(map)
         room_xy = np.where(map == 0) 
         for _ in range(10): ### we have 10 chance for connection_percent_th  
-            #k = np.random.choice(room_xy[0].size) #### peak a random room as a goal
+            #k = np.random.choice(room_xy[0].size) #### pick a random room as a goal
             # goal_r = np.random.randint(map.shape[0] // 2 - 3, map.shape[0] // 2 + 3, 1)[0] # room_xy[0][k]
             # goal_c = np.random.randint(map.shape[1] // 2 - 3, map.shape[1] // 2 + 3, 1)[0] #room_xy[1][k]
             goal_r = np.random.randint(0, map.shape[0] // 2 + 3, 1)[0] # room_xy[0][k]
@@ -25,7 +25,9 @@ class MapGenerator():
                 break
                 
         map[np.where(visited == 0)] = 1 ## make the rest (disconnected rooms), obstacle
-        return goal_r, goal_c
+        map[goal_r, goal_c] = 2
+
+        return map
 
     @staticmethod 
     def rcToRoomIndex(grid, r, c):
