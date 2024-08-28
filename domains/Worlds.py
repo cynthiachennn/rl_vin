@@ -3,7 +3,8 @@
 # indexing is [a, s, s'] instead of [s, a, s']
 # gridworld seems fancier with how it gets the transitions but this also makes more sense maybe...
 
-import numpy as np 
+import numpy as np
+import torch
 
 class World():
     def __init__(self, grid, goal_r, goal_c):
@@ -100,3 +101,5 @@ class World():
         prior[goal_ind]  = 0
         return states, actions, observations, T, Z, R, prior
 
+    def to(self, device):
+        self.inputView = torch.Tensor(self.inputView).to(device)

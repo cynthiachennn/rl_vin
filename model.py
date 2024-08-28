@@ -11,7 +11,6 @@ class VIN(nn.Module):
     def __init__(self, config):
         super(VIN, self).__init__()
         self.config = config
-        self.device = config['device']
         self.exploration_prob = 1 # start with only exploring
         self.rng = np.random.default_rng() # should i pass this in... ? ..
         self.actions = [(0, 1), (-1, 0), (0, -1), (1,0), (0, 0)] # ["right", "up", "left", "down", "stay"]
@@ -51,6 +50,7 @@ class VIN(nn.Module):
         :param k: number of iterations
         :return: logits and **argmax** of logits
         """
+        device = input_view.get_device()
         trajectory = torch.empty((0, 5), dtype=int)
         total_steps = 0
         done = 0
@@ -78,12 +78,13 @@ class VIN(nn.Module):
         if test is False:
             q_target = [torch.sum(trajectory[i:, 3]) for i in range(trajectory.shape[0])]
             pred_values = torch.empty((0))
+            pred_values = pred_values.to(device)
             for episode in trajectory:
                 state_x, state_y = episode[0], episode[1]
                 q_pred, _ = self.get_action(q, state_x, state_y)
                 pred_values = torch.cat((pred_values, q_pred))
             target_values = torch.clone(pred_values)
-            target_values[:, trajectory[:, 2]] = torch.Tensor(q_target).to(self.device)
+            target_values[:, trajectory[:, 2]] = torch.Tensor(q_target).to(device) # not sure if .to(device) is necessary
             
             return torch.stack((pred_values, target_values))
         

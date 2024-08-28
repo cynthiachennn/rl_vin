@@ -11,11 +11,12 @@ from domains.Worlds import World
 rng = np.random.default_rng() # is this bad to do?
 
 def train(worlds_train, model, config, criterion, optimizer, epochs, batch_size):
-    exploration_prob = 1
     for epoch in range(epochs):
         print('epoch:', epoch)
         explore_start = datetime.now()
-        data = torch.empty((2, 0, config['n_act'])).to(config['device']) # stop using config['n_act'] !!!
+        data = torch.empty((2, 0, config['n_act'])).to(model.output_device) # stop using config['n_act'] !!!
+        # for idx in range(0, len(worlds_train), batch_size):
+            # world = worlds_train[idx: idx + batch_size] # try batching for faster??
         for world in worlds_train:
             # pick a random free state for the start state
             free = False
@@ -109,6 +110,8 @@ def main(datafile, epochs, batch_size):
         if torch.cuda.is_available()
         else "cpu"
     )
+
+    print(device)
     
     worlds = np.load(datafile)
     worlds.shape
@@ -119,7 +122,6 @@ def main(datafile, epochs, batch_size):
     worlds_test = worlds[int(len(worlds)*train_size):]
 
     config = {
-        "device": device,
         "n_act": 5, 
         "lr": 0.005,
         'l_i': 2,
@@ -129,7 +131,7 @@ def main(datafile, epochs, batch_size):
     }
 
     model = VIN(config).to(device)
-    model = torch.nn.DataParallel(model)
+    model = torch.nn.DataParallel(model, [0, 1, 2, 3])
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 

@@ -11,20 +11,32 @@ from domains.Worlds import World
 
 rng = np.random.default_rng()
 
+
+# all parameters here
 device = (
-    "cuda"
+    "cuda:1"
     if torch.cuda.is_available()
     # else "mps"
     # if torch.backends.mps.is_available()
     else "cpu"
 )
+imsize = 4
+n_worlds = 64
+epochs = 32
+batch_size = 32
+# device = "cpu"
 
 print(device)
 print ("NUM:", torch.cuda.device_count())
 
+<<<<<<< Updated upstream
 datafile = 'dataset/rl/small_4_4_1024.npz' # type_size_density_n_envs
+=======
+# check multi gpu code in 
+datafile = f'dataset/rl/small_{imsize}_4_{n_worlds}.npz' # type_size_density_n_envs
+>>>>>>> Stashed changes
 with np.load(datafile) as f:
-    envs = f['arr_0']
+    envs = f['arr_0'] # change name 
     goals = f['arr_1']
 imsize = envs.shape[1]
 worlds = [World(envs[i], goals[i][0], goals[i][1]) for i in range(len(envs))]
@@ -32,10 +44,12 @@ rng.shuffle(worlds)
 worlds_train = worlds[:int(0.8 * len(worlds))]
 worlds_test = worlds[int(0.8 * len(worlds)):]
 
-epochs = 32
-batch_size = 32
 
 config = {
+<<<<<<< Updated upstream
+=======
+    "imsize": imsize,
+>>>>>>> Stashed changes
     "device": device,
     "n_act": 5, 
     "lr": 0.005,
@@ -46,7 +60,7 @@ config = {
 }
 
 model = VIN(config).to(device)
-model = torch.nn.DataParallel(model)
+# model = torch.nn.DataParallel(model)
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
@@ -75,7 +89,8 @@ for epoch in range(epochs):
     loss = criterion(data[0], data[1])
     loss.backward()
     optimizer.step()
-    model.module.exploration_prob = model.module.exploration_prob * 0.99 # no real basis for why this. i think ive seen .exp and other things
+    model.exploration_prob = model.exploration_prob * 0.99
+    # model.module.exploration_prob = model.module.exploration_prob * 0.99 # no real basis for why this. i think ive seen .exp and other things
     print('training time:', datetime.now() - train_start)
     print('epoch time:', datetime.now() - explore_start)
 
@@ -102,6 +117,7 @@ with torch.no_grad():
             print('actions:', trajectory[:, 1])
 
             # visualize world and values ? 
+<<<<<<< Updated upstream
             r, v = model.module.process_input(torch.Tensor(world.inputView))
             q = model.module.value_iteration(r, v)
 
@@ -112,6 +128,22 @@ with torch.no_grad():
             plt.imshow(q_max, cmap='viridis')
             plt.show()
             
+=======
+            # r, v = model.module.process_input(torch.Tensor(world.inputView))
+            # q = model.module.value_iteration(r, v)
+            # fig, ax = plt.subplots()
+            # plt.imshow(world.grid.T, cmap='Greys')
+            # ax.plot(world.goal_r, world.goal_c, 'ro')
+            # fig, ax = plt.subplots()
+            # q_max = [[np.max(model.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
+            # plt.imshow(q_max, cmap='viridis')
+            # plt.show()
+
+            # print trajectory at least
+            print('states:', trajectory[:, 0])
+            print('actions:', trajectory[:, 1])
+
+>>>>>>> Stashed changes
         if trajectory[-1, 4] ==False:
             print('failed?')
 
