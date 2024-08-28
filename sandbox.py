@@ -6,9 +6,9 @@ from datetime import datetime
 from tqdm import tqdm
 
 from generators.sparse_map import  SparseMap
-from dataset.generate_rl_dataset import SmallMap 
+from dataset.generate_dataset import SmallMap 
 from model import VIN
-from domains.batch_worlds import World
+from domains.Worlds import World
 
 rng = np.random.default_rng()
 
@@ -38,7 +38,6 @@ epochs = 32
 batch_size = 32
 
 config = {
-    "imsize": imsize, 
     "device": device,
     "n_act": 5, 
     "lr": 0.005,
@@ -53,22 +52,6 @@ model = torch.nn.DataParallel(model)
 criterion = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
 
-# will clean these up they are just random helper functions 
-class Trajectories(Dataset):
-    def __init__(self, inputView, memories, target_values):
-        self.inputView = inputView
-        self.memories = memories
-        self.target_values = target_values
-    
-    def __len__(self):
-        return len(self.memories)
-    
-    def __getitem__(self, idx):
-        inputView = self.inputView[idx]
-        memories = self.memories[idx]
-        target_values = self.target_values[idx]
-        return inputView, memories, target_values
-
 exploration_prob = 1
 for epoch in range(epochs):
     print('epoch:', epoch)
@@ -76,7 +59,7 @@ for epoch in range(epochs):
     data = torch.empty((2, 0, config['n_act'])).to(device) # stop using config['n_act'] !!!
     for world in worlds_train:
         start_state = rng.integers(len(world.states)) # random start state idx
-        goal_state = SparseMap.rcToRoomIndex(world.grid, world.goal_r, world.goal_c)        
+        goal_state = world.rcToRoomIndex(world.goal_r, world.goal_c)        
         # would be nice to store this/method for this directly in world object ?
         n_traj = 4
         max_steps = 5000
@@ -115,19 +98,23 @@ with torch.no_grad():
         if trajectory[-1, 4] == 1:
             print('success!')
             correct += 1
+
+            # print trajectory at least
+            print('states:', trajectory[:, 0])
+            print('actions:', trajectory[:, 1])
+
             # visualize world and values ? 
             r, v = model.module.process_input(torch.Tensor(world.inputView))
             q = model.module.value_iteration(r, v)
 
             fig, ax = plt.subplots()
             plt.imshow(world.grid.T, cmap='Greys')
-            ax.plot(world.goal_r, world.goal_c, 'ro')
             fig, ax = plt.subplots()
             q_max = [[np.max(model.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
             plt.imshow(q_max, cmap='viridis')
             plt.show()
-
+            
         if trajectory[-1, 4] ==False:
             print('failed?')
 
-print('accuracy:', correct/len(worlds_train))
+print('accuracy:', correct/len(worlds_test))

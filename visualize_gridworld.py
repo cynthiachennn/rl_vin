@@ -4,7 +4,7 @@ from sandbox_utils import *
 
 # WIP
 from generators.sparse_map import SparseMap
-from domains.batch_worlds import *
+from domains.Worlds import *
 
 
 # generate data?? -sparse map not kentsommer gridworld.

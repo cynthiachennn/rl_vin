@@ -58,7 +58,7 @@ class SmallMap(MapGenerator):
         return goal_r, goal_c
 
 def main(n_envs=1024, size=8, density=20, scale=2, type='sparse'):
-    save_path = f'dataset/rl/{type}_{size}_{density}_{n_envs}.npz' # uhhh
+    save_path = f'dataset/saved_worlds/{type}_{size}_{density}_{n_envs}.npz' # uhhh
 
     if type == 'sparse':
         maps = SparseMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_percent=density, scale=scale)
@@ -75,9 +75,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=1024)
-    parser.add_argument("--size", "-s", type=int, help="side length of map", default=8)
-    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=20)
-    parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=2)
+    parser.add_argument("--size", "-s", type=int, help="side length of map", default=4)
+    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=4)
+    parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=1)
     parser.add_argument("--type", "-t", type=str, help="type of environment", default="small")
     args = parser.parse_args()
     
