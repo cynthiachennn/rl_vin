@@ -8,10 +8,11 @@ from domains.Worlds import World
 
 rng = np.random.default_rng()
 
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]= "0"
+
 def load_model(datafile, model_path):
         
-    datafile = 'dataset/saved_worlds/small_4_4_64.npy' # type_size_density_n_envs
-
     device = (
         "cuda"
         if torch.cuda.is_available()
@@ -29,18 +30,18 @@ def load_model(datafile, model_path):
         'l_h': 150,
         "l_q": 10,
         "k": 20,
+        "max_steps": 50
     }
 
-    model_path = 'saved_models/2024-08-28 00-05-13_6x6_51_x32.pt'
+    net = VIN(config).to(device)
+    net = torch.nn.DataParallel(net)
+    net.load_state_dict(torch.load(model_path))
+    net.eval()
 
-    model = VIN(config).to(device)
-    model = torch.nn.DataParallel(model)
-    model.load_state_dict(torch.load(model_path))
-    model.eval()
+    return worlds, net
 
-    return worlds, model
-
-def test(data, model):
+def test(data, net):
+    device = 'cuda' # module
     with torch.no_grad():
         correct = 0
         # create new testing env (will perform badly if trained on only one env tho duh)
@@ -52,49 +53,55 @@ def test(data, model):
                 if world[start_x, start_y] == 0:
                     free = True
             goal_x, goal_y = np.where(world == 2)
+            coords = [start_x, start_y, goal_x[0], goal_y[0]] # torch.cat((start_x, start_y, goal_x, goal_y))
 
             # create input view
             reward_mapping = -1 * np.ones(world.shape) # -1 for freespace
             reward_mapping[goal_x, goal_y] = 20 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
             world[goal_x, goal_y] = 0 # remove goal from grid view
             grid_view = np.reshape(world, (1, 1, world.shape[0], world.shape[1]))
-            reward_view =  np.reshape(reward_mapping, (1, 1, world.shape[0], world.shape[1]))
+            reward_view = np.reshape(reward_mapping, (1, 1, world.shape[0], world.shape[1]))
             input_view = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
-            input_view = torch.Tensor(input_view)
+            
+            input_view = torch.tensor(input_view, dtype=torch.float, device=device) #.to(device)
+            coords = torch.tensor(coords, dtype=torch.int, device=device).reshape((1, 4)) # migh tbe inefficent since I make it a tensor earlier :| hm
 
-            trajectory = model(input_view, start_x, start_y, world.shape[0]*world.shape[1], test=True) # max steps = size of world?
-            if trajectory[-1, 4] == 1:
+
+            trajectory = net(input_view, coords, test=True) # max steps = size of world?
+            # print(trajectory.shape)
+            if trajectory[-1, :, 4] == 0:
                 print('success!')
                 correct += 1
 
                 # print trajectory at least
-                print('states:', trajectory[:, 0], trajectory[:, 1])
-                print('actions:', trajectory[:, 2])
+                print('states:', trajectory[:, :, 0], trajectory[:, :, 1])
+                print('actions:', trajectory[:, :, 2])
 
-                # visualize world and values ? 
-                r, v = model.module.process_input(input_view)
-                q = model.module.value_iteration(r, v)
+                # # visualize world and values ? 
+                # r, v = net.module.process_input(input_view)
+                # q = net.module.value_iteration(r, v)
 
-                fig, ax = plt.subplots()
-                plt.imshow(world.T, cmap='Greys')
-                ax.plot(goal_x, goal_y, 'ro')
-                fig, ax = plt.subplots()
-                q_max = [[np.max(model.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
-                plt.imshow(q_max, cmap='viridis')
-                plt.show()
+                # fig, ax = plt.subplots()
+                # plt.imshow(world.T, cmap='Greys')
+                # ax.plot(goal_x, goal_y, 'ro')
+                # fig, ax = plt.subplots()
+                # q_max = [[np.max(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
+                # plt.imshow(q_max, cmap='viridis')
+                # plt.show()
                 
-            if trajectory[-1, 4] ==False:
-                print('failed?')
+            # if trajectory[-1, :, 4] == 1:
+                # print('failed?')
     print('accuracy:', correct/len(data))
 
 def main(datafile, model_path):
-    data, model = load_model(datafile, model_path)
-    test(data, model)
+    data, net = load_model(datafile, model_path)
+    test(data, net)
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    datafile = parser.add_argument('--datafile', '-d', type=str, default='dataset/saved_worlds/small_4_4_64.npy')
-    model_path = parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-08-28 00-05-13_6x6_51_x32.pt')
-    main(datafile, model_path)
+    parser.add_argument('--datafile', '-d', type=str, default='dataset/saved_worlds/small_4_4_64.npy')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-08-30 14-37-42_6x6_51_x32.pt')
+    args = parser.parse_args()
+    main(args.datafile, args.model_path)

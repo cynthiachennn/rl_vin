@@ -75,7 +75,7 @@ def main(n_envs=1024, size=8, density=20, scale=2, type='sparse'):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=64)
+    parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=1024)
     parser.add_argument("--size", "-s", type=int, help="side length of map", default=4)
     parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=4)
     parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=1)
