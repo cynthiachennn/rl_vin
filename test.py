@@ -41,7 +41,7 @@ def load_model(datafile, model_path):
     return worlds, net
 
 def test(data, net):
-    device = 'cuda' # module
+    device = 'cpu' # 'cuda' # module
     with torch.no_grad():
         correct = 0
         # create new testing env (will perform badly if trained on only one env tho duh)
@@ -74,20 +74,29 @@ def test(data, net):
                 correct += 1
 
                 # print trajectory at least
-                print('states:', trajectory[:, :, 0], trajectory[:, :, 1])
-                print('actions:', trajectory[:, :, 2])
+            print('states:', trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())
+            print('actions:', trajectory[:, :, 2].flatten().tolist())
 
-                # # visualize world and values ? 
-                # r, v = net.module.process_input(input_view)
-                # q = net.module.value_iteration(r, v)
+            # visualize world and values ? 
+            r, v = net.module.process_input(input_view)
+            q = net.module.value_iteration(r, v)
 
-                # fig, ax = plt.subplots()
-                # plt.imshow(world.T, cmap='Greys')
-                # ax.plot(goal_x, goal_y, 'ro')
-                # fig, ax = plt.subplots()
-                # q_max = [[np.max(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.grid.shape[1])] for r in range(world.grid.shape[0])]
-                # plt.imshow(q_max, cmap='viridis')
-                # plt.show()
+            fig, ax = plt.subplots()
+            plt.imshow(world.T, cmap='Greys')
+            ax.plot(start_x, start_y, 'bo')
+            ax.plot(goal_x, goal_y, 'ro')
+            fig, ax = plt.subplots()
+            q_max = [[np.max(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
+            plt.imshow(q_max, cmap='viridis')
+            plt.colorbar()
+            fig, ax = plt.subplots()
+            q_min = [[np.min(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
+            plt.imshow(q_min, cmap='viridis')
+            plt.colorbar()
+            fig, ax = plt.subplots()
+            plt.imshow(r[0, 0], cmap='Reds')
+            plt.colorbar()
+            plt.show()
                 
             # if trajectory[-1, :, 4] == 1:
                 # print('failed?')

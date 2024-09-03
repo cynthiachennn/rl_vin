@@ -36,6 +36,8 @@ class VIN(nn.Module):
             stride=1,
             padding=1,
             bias=False)
+        # how to initialize weights ? 
+        torch.nn.init.normal_(self.r.weight, -2) # UHh
         self.fc = nn.Linear(in_features=config['l_q'], out_features=len(self.actions), bias=False)
         self.w = Parameter(
             torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
@@ -45,9 +47,9 @@ class VIN(nn.Module):
     def forward(self, input_view, coords, test=False):
         state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
         self.rng = np.random.default_rng() ## < idk
-        device = input_view.get_device()
+        device = 'cpu'  # input_view.get_device()   ### module
         batch_size = input_view.shape[0]
-        trajectory = torch.empty((0, batch_size, 5), dtype=int, device=device)
+        trajectory = torch.empty(size=(0, batch_size, 5), dtype=torch.int, device=device)
         total_steps = 0
         done = torch.ones(batch_size, device=device)
         r, v = self.process_input(input_view)
@@ -59,11 +61,13 @@ class VIN(nn.Module):
                     action = torch.tensor(self.rng.choice(len(self.actions), batch_size), device=device)
                 else:
                     logits, action = self.get_action(q, state_x, state_y)
-                    print('action', action[0:5])
+                    # print(action)
             else: # test = true means always follow policy
                 logits, action = self.get_action(q, state_x, state_y)
             next_x, next_y, reward = self.move(input_view, action, state_x, state_y)
-            done = done * torch.where(((next_x == goal_x) & (next_y == goal_y)), 0, 1) # 0 means goal is reached, its sort of weird notation but it mkaes the math/represetnation more streamlined
+            # done = 0 means goal has been reached, weird notation because i need to disregard values after reaching the goal
+            done = done * torch.where(done == 2, 0, 1) # if in the LAST STEP, the agent reached the goal, done = 2; that means from now ON, done = 0/mark that goal is previously reached
+            done = done * torch.where(((next_x == goal_x) & (next_y == goal_y)), 2, 1) # # if we just reached the goal at this step, set done = 2 so we can write that down, and then in the next cycle done will be reset to 0
             experience = torch.vstack((state_x, state_y, action, reward, done)).transpose(0, 1).reshape((1, batch_size, 5))
             trajectory = torch.cat((trajectory, experience))
             state_x, state_y = next_x, next_y
@@ -74,8 +78,11 @@ class VIN(nn.Module):
         trajectory = trajectory.to(torch.int) # shape: [batch_size, n_steps ,5]
 
         if test is False:
-            q_target = [torch.sum(trajectory[i:, range(batch_size), 3], axis=0) for i in range(trajectory.shape[0])]
+            trajectory[:, :, 3] = trajectory[:, :, 3] * trajectory[:, :, 4] # set reward past done to 0 hopefully ?
+            # print(trajectory[:, :, 3])
+            q_target = [torch.sum(trajectory[i:, range(batch_size), 3], dim=0) * 0.2 for i in range(trajectory.shape[0])]
             q_target = torch.stack(q_target).to(device).to(torch.float) # q_target.shape = [n_episodes, batch_size]
+            # print(q_target)
             pred_values = torch.empty((0, batch_size, len(self.actions)), device=device) # [episodes, batch_size, n_actions]
             for episode in trajectory:
                 state_x, state_y = episode[range(batch_size), 0], episode[range(batch_size), 1]
@@ -91,7 +98,17 @@ class VIN(nn.Module):
             # einsum feels like black magic but I actually think this works/makes sense
             pred_values = torch.einsum('eba,eb->eba', [pred_values, trajectory[:, :, 4]])
             target_values = torch.einsum('eba,eb->eba', [target_values, trajectory[:, :, 4]]) 
-            # print('target_values', target_values.shape)
+            
+            # ok i want to compare pred and target
+            # for each interaction in a batch, and each world in a batch, there should be a corresponding pred/target
+            
+            # print(pred_values.shape)
+            # for episode in range(trajectory.shape[0]):
+            #     for world in range(trajectory.shape[1]):
+            #         if (trajectory[episode, world, 4] == 1):
+            #             print(f'e{episode} w{world} pred: ', pred_values[episode, world].tolist())
+            #             print(f'e{episode} w{world} targ: ', target_values[episode, world].tolist())
+
             return torch.stack((pred_values, target_values))
         
         if test is True:
@@ -126,13 +143,14 @@ class VIN(nn.Module):
         # q_out = q[torch.arange(batch_sz), :, state_x.long(), state_y.long()].view(batch_sz, l_q)
         q_out = q[torch.arange(batch_sz), :, state_x, state_y].view(batch_sz, l_q)
         logits = self.fc(q_out)  # q_out to actions
-        action = torch.argmax(logits, axis=1) # orignal action has nn.softmax, which i could np.choice with p=action to choose from distribution instead ? 
+        action = torch.argmax(logits, dim=1) # orignal action has nn.softmax, which i could np.choice with p=action to choose from distribution instead ? 
         return logits, action
 
     def move(self, input_view, actions, state_x, state_y):
+        device = 'cpu' #input_view.get_device() ## this is so redundant ahh
         grid, reward = input_view[:, 0], input_view[:, 1]
         action = [self.actions[action] for action in actions]
-        action = torch.tensor(action, dtype=torch.int, device=input_view.get_device())
+        action = torch.tensor(action, dtype=torch.int, device=device)
         next_x, next_y = state_x + action[:, 0], state_y + action[:, 1]
         for i in torch.where(grid[range(input_view.shape[0]), next_x, next_y] == 1):
             next_x[i] = state_x[i]

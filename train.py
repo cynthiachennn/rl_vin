@@ -17,7 +17,7 @@ def train(worlds_train, net, config, criterion, optimizer, epochs, batch_size):
     for epoch in range(epochs):
         print('epoch:', epoch)
         explore_start = datetime.now()
-        device = 'cuda' #net.output_device # module
+        device = 'cpu' #net.output_device # module
         data = torch.empty((2, 0, batch_size, config['n_act'])).to(device) # literally the only place i use config['n_act'].. do better !!! # [target/pred, n_experiences, batch_size, n_actions]
         for idx in range(0, len(worlds_train), batch_size):
             worlds = worlds_train[idx: idx + batch_size] # try batching for faster??
@@ -38,7 +38,7 @@ def train(worlds_train, net, config, criterion, optimizer, epochs, batch_size):
             
             # create input view
             reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
-            reward_mapping[range(batch_size), coords[:, 2], coords[:, 3]] = 20 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+            reward_mapping[range(batch_size), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
             grid_view = worlds.copy()
             grid_view[range(batch_size), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
             grid_view = np.reshape(worlds, (batch_size, 1, worlds.shape[1], worlds.shape[2]))
@@ -70,7 +70,7 @@ def train(worlds_train, net, config, criterion, optimizer, epochs, batch_size):
 
 
 def test(worlds_test, net):
-    device = 'cuda' # module
+    device = 'cpu' # module
     with torch.no_grad():
         correct = 0
         # create new testing env (will perform badly if trained on only one env tho duh)
@@ -85,8 +85,8 @@ def test(worlds_test, net):
             coords = [start_x, start_y, goal_x[0], goal_y[0]] # torch.cat((start_x, start_y, goal_x, goal_y))
 
             # create input view
-            reward_mapping = -1 * np.ones(world.shape) # -1 for freespace
-            reward_mapping[goal_x, goal_y] = 20 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+            reward_mapping = -0.1 * np.ones(world.shape) # -1 for freespace
+            reward_mapping[goal_x, goal_y] = 1 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
             world[goal_x, goal_y] = 0 # remove goal from grid view
             grid_view = np.reshape(world, (1, 1, world.shape[0], world.shape[1]))
             reward_view = np.reshape(reward_mapping, (1, 1, world.shape[0], world.shape[1]))
@@ -97,14 +97,14 @@ def test(worlds_test, net):
 
 
             trajectory = net(input_view, coords, test=True) # max steps = size of world?
-            config['max_steps'] = 50
+            net.module.config['max_steps'] = 50
             if trajectory[-1, :, 4] == 0:
                 print('success!')
                 correct += 1
 
                 # print trajectory at least
-                print('states:', trajectory[:, :, 0], trajectory[:, :, 1])
-                print('actions:', trajectory[:, :, 2])
+            print('states:', trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())
+            print('actions:', trajectory[:, :, 2].flatten().tolist())
 
                 # # visualize world and values ? 
                 # r, v = net.module.process_input(input_view)
@@ -136,7 +136,8 @@ def main(datafile, epochs, batch_size):
     worlds.shape
     rng.shuffle(worlds)
     imsize = worlds[0].shape[0]
-    train_size = 0.8 # part of parameters (?) so should this even stay here?
+    # print('changed train size = 1; all data used for train')
+    train_size = 0.8# # part of parameters (?) so should this even stay here?
     worlds_train = worlds[:int(len(worlds)*train_size)]
     worlds_test = worlds[int(len(worlds)*train_size):]
 
@@ -147,7 +148,7 @@ def main(datafile, epochs, batch_size):
         'l_h': 150,
         "l_q": 10,
         "k": 20,
-        "max_steps": 5000,
+        "max_steps": 50,
     }
 
     net = VIN(config).to(device)
@@ -168,8 +169,8 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_4_64.npy')
-    parser.add_argument('--epochs', '-e', default=8)
-    parser.add_argument('--batch_size', '-b', default=32)
+    parser.add_argument('--epochs', '-e', default=32)
+    parser.add_argument('--batch_size', '-b', default=8)
     args = parser.parse_args()
     
     main(args.datafile, args.epochs, args.batch_size)    
