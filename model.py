@@ -36,15 +36,34 @@ class VIN(nn.Module):
             stride=1,
             padding=1,
             bias=False)
-        # how to initialize weights ? 
-        torch.nn.init.normal_(self.r.weight, -2) # UHh
+
         self.fc = nn.Linear(in_features=config['l_q'], out_features=len(self.actions), bias=False)
         self.w = Parameter(
             torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
         self.sm = nn.Softmax(dim=1)
 
+        # how to initialize weights ?
+        nn.init.zeros_(self.w)
+        nn.init.zeros_(self.q.weight)
+        nn.init.ones_(self.w[0, 0, 1, 2]) # right
+        nn.init.ones_(self.w[1, 0, 0, 1]) # up 
+        nn.init.ones_(self.w[2, 0, 1, 0]) # left
+        nn.init.ones_(self.w[3, 0, 2, 1]) # down
+        nn.init.ones_(self.w[4, 0, 1, 1]) # stay
+        nn.init.ones_(self.q.weight[0, 0, 1, 2]) # right
+        nn.init.ones_(self.q.weight[1, 0, 0, 1]) # up 
+        nn.init.ones_(self.q.weight[2, 0, 1, 0]) # left
+        nn.init.ones_(self.q.weight[3, 0, 2, 1]) # down
+        nn.init.ones_(self.q.weight[4, 0, 1, 1]) # stay
+
 
     def forward(self, input_view, coords, test=False):
+
+        # maybe track the evolution of q_value
+        
+
+
+
         state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
         self.rng = np.random.default_rng() ## < idk
         device = 'cpu'  # input_view.get_device()   ### module
@@ -79,10 +98,8 @@ class VIN(nn.Module):
 
         if test is False:
             trajectory[:, :, 3] = trajectory[:, :, 3] * trajectory[:, :, 4] # set reward past done to 0 hopefully ?
-            # print(trajectory[:, :, 3])
             q_target = [torch.sum(trajectory[i:, range(batch_size), 3], dim=0) * 0.2 for i in range(trajectory.shape[0])]
             q_target = torch.stack(q_target).to(device).to(torch.float) # q_target.shape = [n_episodes, batch_size]
-            # print(q_target)
             pred_values = torch.empty((0, batch_size, len(self.actions)), device=device) # [episodes, batch_size, n_actions]
             for episode in trajectory:
                 state_x, state_y = episode[range(batch_size), 0], episode[range(batch_size), 1]
@@ -101,7 +118,7 @@ class VIN(nn.Module):
             
             # ok i want to compare pred and target
             # for each interaction in a batch, and each world in a batch, there should be a corresponding pred/target
-            
+    
             # print(pred_values.shape)
             # for episode in range(trajectory.shape[0]):
             #     for world in range(trajectory.shape[1]):

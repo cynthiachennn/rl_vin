@@ -168,9 +168,9 @@ def main(datafile, epochs, batch_size):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_4_64.npy')
+    parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_0_256.npy')
     parser.add_argument('--epochs', '-e', default=32)
-    parser.add_argument('--batch_size', '-b', default=8)
+    parser.add_argument('--batch_size', '-b', default=32)
     args = parser.parse_args()
     
     main(args.datafile, args.epochs, args.batch_size)    

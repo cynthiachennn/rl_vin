@@ -80,23 +80,43 @@ def test(data, net):
             # visualize world and values ? 
             r, v = net.module.process_input(input_view)
             q = net.module.value_iteration(r, v)
+            # print(net.module.q.weight)
+
+            # fig, ax = plt.subplots()
+            # q_max = [[np.max(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
+            # plt.imshow(q_max, cmap='viridis')
+            # plt.colorbar()
+
+            # # want to sum q_values of adjacent states into current... is that not just a convolution lmao ? 
+            # fig, ax = plt.subplots()
+            # q_sum = torch.nn.functional.conv2d(q, torch.ones(1, 10, 3, 3), stride=1, padding=1)
+            # # yes but actualy we don't want the sum we want to display max lol
+            # q_cpu = np.pad(q.cpu().detach().numpy()[0, 0], 1)
+            # q_sum = [np.max(q_cpu[i:i+3, j:j+3]) for i in range(6) for j in range(6)]
+            # print(q_sum)
+
+            fig, ax = plt.subplots()
+            q_logits = [[net.module.get_action(q, r, c)[0].cpu().detach().numpy() for c in range(world.shape[1])] for r in range(world.shape[0])]
+            q_logits = np.array(q_logits)
+            new_matrix = np.zeros((8, 8, 5))
+            for row in range(6):
+                for col in range(6):
+                    for act in range(5):
+                        action = net.module.actions[act]
+                        new_matrix[row + 1 + action[0], col + 1 + action[1], act] = q_logits[row, col, 0, act]
+            q_sum = [np.max(new_matrix[i, j]) for i in range(1,7) for j in range(1,7)]
+            plt.imshow(np.array(q_sum).reshape(6, 6), cmap='plasma')
+            plt.colorbar()
+
+            fig, ax = plt.subplots()
+            plt.imshow(r[0, 0], cmap='Reds')    
+            plt.colorbar()
+            plt.show()
 
             fig, ax = plt.subplots()
             plt.imshow(world.T, cmap='Greys')
             ax.plot(start_x, start_y, 'bo')
             ax.plot(goal_x, goal_y, 'ro')
-            fig, ax = plt.subplots()
-            q_max = [[np.max(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
-            plt.imshow(q_max, cmap='viridis')
-            plt.colorbar()
-            fig, ax = plt.subplots()
-            q_min = [[np.min(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
-            plt.imshow(q_min, cmap='viridis')
-            plt.colorbar()
-            fig, ax = plt.subplots()
-            plt.imshow(r[0, 0], cmap='Reds')
-            plt.colorbar()
-            plt.show()
                 
             # if trajectory[-1, :, 4] == 1:
                 # print('failed?')
@@ -110,7 +130,7 @@ def main(datafile, model_path):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-d', type=str, default='dataset/saved_worlds/small_4_4_64.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-08-30 14-37-42_6x6_51_x32.pt')
+    parser.add_argument('--datafile', '-d', type=str, default='dataset/saved_worlds/small_4_0_256.npy')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-03 14-46-04_6x6_204_x32.pt')
     args = parser.parse_args()
     main(args.datafile, args.model_path)
