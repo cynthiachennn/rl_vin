@@ -18,8 +18,8 @@ def train(worlds_train, net, config, criterion, optimizer, epochs, batch_size):
         print('epoch:', epoch)
         explore_start = datetime.now()
         device = 'cpu' #net.output_device # module
-        data = torch.empty((2, 0, batch_size, config['n_act'])).to(device) # literally the only place i use config['n_act'].. do better !!! # [target/pred, n_experiences, batch_size, n_actions]
         for idx in range(0, len(worlds_train), batch_size):
+            data = torch.empty((2, 0, batch_size, config['n_act'])).to(device) # literally the only place i use config['n_act'].. do better !!! # [target/pred, n_experiences, batch_size, n_actions]
             worlds = worlds_train[idx: idx + batch_size] # try batching for faster??
             if len(worlds) < batch_size:
                 continue
@@ -54,15 +54,15 @@ def train(worlds_train, net, config, criterion, optimizer, epochs, batch_size):
                 data = torch.cat((data, values), dim=1)
                 # store data as 1 complete trajectory full of multiple memories in each entry
                 # can shuffle the trajectories and also the memories within the trajectory ? < but not sure if shuffling memories is gooood tbh
-        print('explore time:', datetime.now() - explore_start)
+        # print('explore time:', datetime.now() - explore_start)
 
-        train_start = datetime.now()
-        optimizer.zero_grad() # start training
-        idx = torch.randperm(len(data[0]))
-        data = data[:, idx]
-        loss = criterion(data[0], data[1])
-        loss.backward()
-        optimizer.step()
+            train_start = datetime.now()
+            optimizer.zero_grad() # start training
+            idx = torch.randperm(len(data[0]))
+            data = data[:, idx]
+            loss = criterion(data[0], data[1])
+            loss.backward()
+            optimizer.step()
         net.module.exploration_prob = net.module.exploration_prob * 0.99 # no real basis for why this. i think ive seen .exp and other things
         # net.exploration_prob = net.exploration_prob * 0.99
         print('training time:', datetime.now() - train_start)
@@ -168,7 +168,7 @@ def main(datafile, epochs, batch_size):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_0_256.npy')
+    parser.add_argument('--datafile', '-df', default='dataset/saved_worlds/small_4_4_1024.npy')
     parser.add_argument('--epochs', '-e', default=32)
     parser.add_argument('--batch_size', '-b', default=32)
     args = parser.parse_args()
