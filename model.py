@@ -42,19 +42,19 @@ class VIN(nn.Module):
             torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
         self.sm = nn.Softmax(dim=1)
 
-        # how to initialize weights ?
-        nn.init.zeros_(self.w)
-        nn.init.zeros_(self.q.weight)
-        nn.init.ones_(self.w[0, 0, 1, 2]) # right
-        nn.init.ones_(self.w[1, 0, 0, 1]) # up 
-        nn.init.ones_(self.w[2, 0, 1, 0]) # left
-        nn.init.ones_(self.w[3, 0, 2, 1]) # down
-        nn.init.ones_(self.w[4, 0, 1, 1]) # stay
-        nn.init.ones_(self.q.weight[0, 0, 1, 2]) # right
-        nn.init.ones_(self.q.weight[1, 0, 0, 1]) # up 
-        nn.init.ones_(self.q.weight[2, 0, 1, 0]) # left
-        nn.init.ones_(self.q.weight[3, 0, 2, 1]) # down
-        nn.init.ones_(self.q.weight[4, 0, 1, 1]) # stay
+        # # how to initialize weights ?
+        # nn.init.zeros_(self.w)
+        # nn.init.zeros_(self.q.weight)
+        # nn.init.ones_(self.w[0, 0, 1, 2]) # right
+        # nn.init.ones_(self.w[1, 0, 0, 1]) # up 
+        # nn.init.ones_(self.w[2, 0, 1, 0]) # left
+        # nn.init.ones_(self.w[3, 0, 2, 1]) # down
+        # nn.init.ones_(self.w[4, 0, 1, 1]) # stay
+        # nn.init.ones_(self.q.weight[0, 0, 1, 2]) # right
+        # nn.init.ones_(self.q.weight[1, 0, 0, 1]) # up 
+        # nn.init.ones_(self.q.weight[2, 0, 1, 0]) # left
+        # nn.init.ones_(self.q.weight[3, 0, 2, 1]) # down
+        # nn.init.ones_(self.q.weight[4, 0, 1, 1]) # stay
 
 
     def forward(self, input_view, coords, test=False):
