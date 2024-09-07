@@ -1,3 +1,4 @@
+from tracemalloc import start
 from typing_extensions import Final
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,35 +15,40 @@ rng = np.random.default_rng() # is this bad to do?
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]= "0"
 
-def train(worlds_train, net, config, epochs, batch_size):
-    log_datetime = str(datetime.now().strftime("%Y-%m-%d %H-%M-%S"))
+def train(worlds, net, config, epochs, batch_size):
+    log_datetime = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    print(log_datetime)
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
 
-    split = 0.8
-    worlds_val = worlds_train[int(len(worlds_train) * split):]
-    worlds_train = worlds_train[:int(len(worlds_train) * split)]
-
     # want the starts for validation to stay the same so i guess I gotta calculate it now ? 
-    val_coords = np.empty((len(worlds_val), 4), dtype=int)
-    for i in range(len(worlds_val)):
-        free = False
-        while free == False: 
-            start_x, start_y = rng.integers(worlds_val.shape[1]), rng.integers(worlds_val.shape[2])
-            if worlds_val[i, start_x, start_y] == 0:
-                free = True
-        goal_x, goal_y = (np.where(worlds_val[i] == 2))
-        temp = np.array([start_x, start_y, goal_x[0], goal_y[0]])
-        val_coords[i] = temp
-        reward_mapping = -1 * np.ones(worlds_val.shape) # -1 for freespace
-    reward_mapping[range(len(worlds_val)), val_coords[:, 2], val_coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-    grid_view = worlds_val.copy()
-    grid_view[range(len(worlds_val)), val_coords[:, 2], val_coords[:, 3]] = 0 # remove goal from grid view
-    grid_view = np.reshape(worlds_val, (len(worlds_val), 1, worlds_val.shape[1], worlds_val.shape[2]))
-    reward_view = np.reshape(reward_mapping, (len(worlds_val), 1, worlds_val.shape[1], worlds_val.shape[2]))
-    worlds_val= np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
-    best_v_loss = 10000
+    coords = np.empty((len(worlds), 4), dtype=int)
+    for i in range(len(worlds)):
+        start_x, start_y = (np.where(worlds[i] == 3))
+        goal_x, goal_y = (np.where(worlds[i] == 2))
+
+        temp = np.array([start_x[0], start_y[0], goal_x[0], goal_y[0]])
+        coords[i] = temp
+        reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
+    reward_mapping[range(len(worlds)), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+    grid_view = worlds.copy()
+    grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
+    grid_view = np.reshape(worlds, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+    reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+    worlds = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
+
+    worlds = torch.tensor(worlds, dtype=torch.float)
+    coords = torch.tensor(coords, dtype=torch.int)
+
+    split = 0.8
+    worlds_train = worlds[:int(len(worlds)*split)]
+    coords_train = coords[:int(len(worlds)*split)]
+    worlds_val = worlds[int(len(worlds)*split):]
+    coords_val = coords[int(len(worlds)*split):]
     
+    save_train_loss = []
+    save_val_loss = []
+    best_v_loss = 10000
     for epoch in range(epochs):
         print('epoch:', epoch)
         explore_start = datetime.now()
@@ -51,31 +57,12 @@ def train(worlds_train, net, config, epochs, batch_size):
         device = 'cpu' #net.output_device # module
         for idx in range(0, len(worlds_train), batch_size):
             data = torch.empty((2, 0, batch_size, config['n_act'])).to(device) # literally the only place i use config['n_act'].. do better !!! # [target/pred, n_experiences, batch_size, n_actions]
-            worlds = worlds_train[idx: idx + batch_size] # try batching for faster??
+            input_view = worlds_train[idx: idx + batch_size] # try batching for faster??
+            coords = coords_train[idx: idx + batch_size]
             if len(worlds) < batch_size:
                 continue
             # pick a random free state for the start state
-            coords = np.empty((batch_size, 4), dtype=int)
-            for i in range(batch_size):
-                free = False
-                while free == False: 
-                    start_x, start_y = rng.integers(worlds.shape[1]), rng.integers(worlds.shape[2])
-                    if worlds[i, start_x, start_y] == 0:
-                        free = True
-                goal_x, goal_y = (np.where(worlds[i] == 2))
-                temp = np.array([start_x, start_y, goal_x[0], goal_y[0]])
-                coords[i] = temp
-
-            reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
-            reward_mapping[range(batch_size), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-            grid_view = worlds.copy()
-            grid_view[range(batch_size), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
-            grid_view = np.reshape(worlds, (batch_size, 1, worlds.shape[1], worlds.shape[2]))
-            reward_view = np.reshape(reward_mapping, (batch_size, 1, worlds.shape[1], worlds.shape[2]))
-            input_view = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
             
-            input_view = torch.tensor(input_view, dtype=torch.float, device=device) #.to(device)
-            coords = torch.tensor(coords, dtype=torch.int, device=device) #.to(device) #.to(int)
             n_traj = 4
             for traj in range(n_traj): # trajectory is same start.... so actually is there even a point in this?
                 # or should i generate start here so i can get different starts for each trajectory?
@@ -91,6 +78,7 @@ def train(worlds_train, net, config, epochs, batch_size):
             train_loss += loss.item() / total
             loss.backward()
             optimizer.step()
+        save_train_loss.append(train_loss)
         print('explore time:', datetime.now() - explore_start)
         net.module.exploration_prob = net.module.exploration_prob * 0.99 # no real basis for why this. i think ive seen .exp and other things
 
@@ -99,22 +87,26 @@ def train(worlds_train, net, config, epochs, batch_size):
         with torch.no_grad():
             for batch in range(0, len(worlds_val), batch_size):
                 worlds = worlds_val[batch: batch + batch_size]
-                coords = val_coords[batch: batch + batch_size]
+                coords = coords_val[batch: batch + batch_size]
                 if len(worlds) < batch_size:
                     continue
-                
+
                 input_view = torch.tensor(worlds, dtype=torch.float, device=device) #.to(device)
                 coords = torch.tensor(coords, dtype=torch.int, device=device) #.to(device) #.to(int)
-                
                 values = net(input_view, coords)
                 loss = criterion(values[0], values[1])
                 val_loss += loss.item()/total_v
+            save_val_loss.append(loss.item())
             print('epoch: ', epoch, 'train_loss: ', train_loss, 'val loss:', val_loss)
             if val_loss < best_v_loss:
                 best_v_loss = val_loss
-                torch.save(net.state_dict(), f'saved_models/{log_datetime}_{'VAL'}_{worlds.shape[2]}x{worlds.shape[3]}_{len(worlds_train)}_x{epochs}.pt')
+                print('save at epoch', epoch)
+                torch.save(net.state_dict(), f'saved_models/{log_datetime}_{'VAL'}_{worlds.shape[2]}x{worlds.shape[3]}_{len(worlds_train)}.pt')
 
+        torch.save(net.state_dict(), f'saved_models/{log_datetime}_{'FINAL'}_{worlds.shape[2]}x{worlds.shape[3]}_{len(worlds*0.8)}_x{epochs}.pt')
         print('epoch time:', datetime.now() - explore_start)
+    np.save(f'{log_datetime}_train_loss.npy', save_train_loss)
+    np.save(f'{log_datetime}_val_loss.npy', save_val_loss)
 
 
 def main(datafile, epochs, batch_size):
@@ -128,7 +120,7 @@ def main(datafile, epochs, batch_size):
     
     worlds = np.load(datafile)
     imsize = worlds[0].shape[0]
-    worlds_test = np.load(f'dataset/test_worlds/small_{imsize - 2}_{imsize - 2}_1024.npy')
+    worlds_test = np.load(f'dataset/test_worlds/small_{imsize - 2}_{imsize - 2}_2000.npy')
 
     config = {
         "n_act": 5, 
@@ -144,8 +136,6 @@ def main(datafile, epochs, batch_size):
     net = torch.nn.DataParallel(net)
 
     train(worlds, net, config, epochs, batch_size)
-    time = str(datetime.now().strftime("%Y-%m-%d %H-%M-%S"))
-    torch.save(net.state_dict(), f'saved_models/{time}_{'FINAL'}_{worlds.shape[2]}x{worlds.shape[3]}_{len(worlds*0.8)}_x{epochs}.pt')
 
     test(worlds_test, net, viz=False)
 
@@ -153,7 +143,7 @@ def main(datafile, epochs, batch_size):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-df', default='dataset/train_worlds/small_6_6_10000.npy')
+    parser.add_argument('--datafile', '-df', default='dataset/train_worlds/small_4_4_20000.npy')
     parser.add_argument('--epochs', '-e', default=200)
     parser.add_argument('--batch_size', '-b', default=32)
     args = parser.parse_args()

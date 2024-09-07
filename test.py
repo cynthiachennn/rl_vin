@@ -45,7 +45,8 @@ def test(data, net, viz):
     device = 'cpu' # 'cuda' # module
     with torch.no_grad():
         correct = 0
-        pathlengths = []
+        success_distance = []
+        average_distance = []
         # create new testing env (will perform badly if trained on only one env tho duh)
         for world in data:
             # pick a random free state for the start state
@@ -72,9 +73,10 @@ def test(data, net, viz):
             trajectory = net(input_view, coords, test=True) # max steps = size of world?
             # print(trajectory.shape)
             if trajectory[-1, :, 4] == 2:
-                print('success!')
-                pathlengths.append(len(trajectory))
+                #print('success!')
+                success_distance.append(len(trajectory))
                 correct += 1
+            average_distance.append(abs(goal_x[0]-start_x + goal_y[0]-start_y))
 
             if viz:
                 print('states:', [item for item in zip(trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())])
@@ -87,8 +89,7 @@ def test(data, net, viz):
                 # fig, ax = plt.subplots()
                 # q_max = [[np.max(net.module.get_action(q, r, c)[0].cpu().detach().numpy()) for c in range(world.shape[1])] for r in range(world.shape[0])]
                 # plt.imshow(q_max, cmap='viridis')
-                # plt.colorbar()
-
+                # plt.colorb 
                 fig, ax = plt.subplots()
                 plt.imshow(r[0, 0].T, cmap='Reds')
                 plt.colorbar()
@@ -157,7 +158,8 @@ def test(data, net, viz):
                 # if trajectory[-1, :, 4] == 1:
                     # print('failed?')
     print('accuracy:', correct/len(data))
-    print('avg path length:', np.mean(pathlengths))
+    print('success path length:', np.mean(success_distance))
+    print('average path length:', np.mean(average_distance))
     
 
 def main(datafile, model_path, viz):
@@ -169,7 +171,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/small_6_6_1024.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-04 12-20-54_8x8_4096_x32.pt')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-05 12-28-32_VAL_8x8_8000.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)
