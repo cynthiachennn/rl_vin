@@ -7,7 +7,7 @@ import argparse
 from model import VIN
 from domains.Worlds import World
 
-rng = np.random.default_rng()
+rng = np.random.default_rng(9)
 
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]= "0"
@@ -164,14 +164,16 @@ def test(data, net, viz):
 
 def main(datafile, model_path, viz):
     data, net = load_model(datafile, model_path)
+    print(datafile)
+    print(model_path)
     test(data, net, viz)
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/small_6_6_1024.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-05 12-28-32_VAL_8x8_8000.pt')
+    parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_8_20_2000.npy')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-09-10-49-22_FINAL_10x10_32_x100.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)

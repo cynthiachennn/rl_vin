@@ -60,7 +60,7 @@ class VIN(nn.Module):
     def forward(self, input_view, coords, test=False):
         # maybe track the evolution of q_value
         state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
-        self.rng = np.random.default_rng() ## < idk
+        self.rng = np.random.default_rng(9) ## < idk
         device = 'cpu'  # input_view.get_device()   ### module
         batch_size = input_view.shape[0]
         trajectory = torch.empty(size=(0, batch_size, 5), dtype=torch.int, device=device)
