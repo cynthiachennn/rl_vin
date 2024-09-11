@@ -11,14 +11,14 @@ from test import test
 rng = np.random.default_rng(9) # is this bad to do?
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]= "0"
+os.environ["CUDA_VISIBLE_DEVICES"]= "2"
 
 def train(worlds, net, config, epochs, batch_size):
     log_datetime = str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
     print(log_datetime)
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
-    device = 'cpu' #net.output_device # module
+    device = 'cpu' # net.output_device # module
 
     # want the starts for validation to stay the same so i guess I gotta calculate it now ? 
     coords = np.empty((len(worlds), 4), dtype=int)
@@ -49,7 +49,7 @@ def train(worlds, net, config, epochs, batch_size):
     save_val_loss = []
     best_v_loss = 10000
     for epoch in range(epochs):
-        print('epoch:', epoch)
+        # print('epoch:', epoch)
         explore_start = datetime.now()
         train_loss = 0.0
         total = worlds_train.shape[0]/batch_size
@@ -104,7 +104,7 @@ def train(worlds, net, config, epochs, batch_size):
     np.save(f'loss/{log_datetime}_val_loss.npy', save_val_loss)
 
 
-def main(trainfile, testfile, epochs, batch_size):
+if __name__ == '__main__':
     device = (
         "cuda"
         if torch.cuda.is_available()
@@ -112,10 +112,6 @@ def main(trainfile, testfile, epochs, batch_size):
     )
 
     print(device, torch.cuda.device_count())
-    
-    worlds = np.load(trainfile)
-    imsize = worlds[0].shape[0]
-    worlds_test = np.load(testfile)
 
     config = {
         "n_act": 5, 
@@ -130,18 +126,15 @@ def main(trainfile, testfile, epochs, batch_size):
     net = VIN(config).to(device)
     net = torch.nn.DataParallel(net)
 
-    train(worlds, net, config, epochs, batch_size)
+    trainfiles = ['dataset/train_worlds/small_4_4_20000.npy', 'dataset/train_worlds/sparse_8_20_20000.npy', 'dataset/train_worlds/sparse_16_20_20000.npy']
+    epochs = 200
+    batch_size = 32
+    for file in trainfiles:
+        worlds = np.load(file)
+        imsize = worlds[0].shape[0]
+        train(worlds, net, config, epochs, batch_size)
+    
 
+    testfile = 'dataset/test_worlds/sparse_16_20_20000.npy'
+    worlds_test = np.load(testfile)
     test(worlds_test, net, viz=False)
-
-
-if __name__ == "__main__":
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--trainfile', '-train', default='dataset/train_worlds/small_4_4_20000.npy')
-    parser.add_argument('--testfile', '-test', default='dataset/test_worlds/small_4_4_2000.npy')
-    parser.add_argument('--epochs', '-e', default=400)
-    parser.add_argument('--batch_size', '-b', default=32)
-    args = parser.parse_args()
-    
-    main(args.trainfile, args.testfile, args.epochs, args.batch_size)    

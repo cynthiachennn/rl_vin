@@ -1,4 +1,3 @@
-from tracemalloc import start
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -177,7 +176,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_8_20_2000.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-09-16-49-16_VAL_6x6_16000.pt')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-11-10-57-13_VAL_10x10_16000.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)

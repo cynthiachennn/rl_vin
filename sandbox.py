@@ -5,7 +5,7 @@ from datetime import datetime
 
 from model import VIN
 
-rng = np.random.default_rng()
+rng = np.random.default_rng(9)
 
 # all parameters here
 device = (
@@ -85,7 +85,7 @@ for epoch in range(epochs):
         test = False
         for traj in range(n_traj):
             # maybe track the evolution of q_value
-            self.rng = np.random.default_rng() ## < idk
+            self.rng = np.random.default_rng(9) ## < idk
             state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
             grid = input_view[:, 0]
             device = 'cpu'  # input_view.get_device()   ### module

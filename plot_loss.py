@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-train_file = 'loss/2024-09-09-17-01-15_train_loss.npy'
-val_file = 'loss/2024-09-09-17-01-15_val_loss.npy'
+train_file = 'loss/2024-09-10-23-55-53_train_loss.npy'
+val_file = 'loss/2024-09-10-23-55-53_val_loss.npy'
 train_loss = np.load(train_file)
 val_loss = np.load(val_file)
 
