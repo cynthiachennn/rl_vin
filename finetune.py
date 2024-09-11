@@ -21,12 +21,10 @@ def train(worlds, net, config, epochs, batch_size):
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
 
-    # want the starts for validation to stay the same so i guess I gotta calculate it now ? 
     coords = np.empty((len(worlds), 4), dtype=int)
     for i in range(len(worlds)):
         start_x, start_y = (np.where(worlds[i] == 3))
         goal_x, goal_y = (np.where(worlds[i] == 2))
-
         temp = np.array([start_x[0], start_y[0], goal_x[0], goal_y[0]])
         coords[i] = temp
         reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
@@ -63,7 +61,7 @@ def train(worlds, net, config, epochs, batch_size):
                 continue
             # pick a random free state for the start state
             
-            n_traj = 4
+            n_traj = 1
             for traj in range(n_traj): # trajectory is same start.... so actually is there even a point in this?
                 # or should i generate start here so i can get different starts for each trajectory?
                 values = net(input_view, coords)

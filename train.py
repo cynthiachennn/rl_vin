@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 from datetime import datetime
-# from tqdm import tqdm
+from tqdm import tqdm
 import argparse
 
 from model import VIN
@@ -50,8 +50,8 @@ def train(worlds, net, config, epochs, batch_size):
     save_train_loss = []
     save_val_loss = []
     best_v_loss = 10000
-    for epoch in range(epochs):
-        print('epoch:', epoch)
+    for epoch in tqdm(range(epochs)):
+        # print('epoch:', epoch)
         explore_start = datetime.now()
         train_loss = 0.0
         total = worlds_train.shape[0]/batch_size
@@ -63,7 +63,7 @@ def train(worlds, net, config, epochs, batch_size):
                 continue
             # pick a random free state for the start state
             
-            n_traj = 4
+            n_traj = 1
             for traj in range(n_traj): # trajectory is same start.... so actually is there even a point in this?
                 # or should i generate start here so i can get different starts for each trajectory?
                 values = net(input_view, coords)

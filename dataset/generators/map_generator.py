@@ -5,7 +5,7 @@ import numpy as np
 
 class MapGenerator():
     @staticmethod
-    def genGoal(map):
+    def genGoal(map, connection_percent_th = 80):
         def dfs(x, y):
             visited[x, y] = True
             for action in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
@@ -15,12 +15,16 @@ class MapGenerator():
         visited = np.copy(map)
         room_xy = np.where(map == 0)
 
-        k = np.random.choice(room_xy[0].size) #### pick a random room as a start
-        goal_r = room_xy[0][k]
-        goal_c = room_xy[1][k]
+        for _ in range(10): # chance for connnection_percent ... should we reset visited each time?
+            k = np.random.choice(room_xy[0].size) #### pick a random room as a start
+            goal_r = room_xy[0][k]
+            goal_c = room_xy[1][k]
+            dfs(goal_r, goal_c)
+            if np.mean(visited) > connection_percent_th / 100:
+                break
+        map[np.where(visited == False)] = 1 # removed the connection percent thing thoooo
         map[goal_r, goal_c] = 2
-        dfs(goal_r, goal_c)
-
+        
         room_xy = np.where(map == 0)
         k = np.random.choice(room_xy[0].size)
         start_r = room_xy[0][k]

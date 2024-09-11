@@ -1,3 +1,4 @@
+from tracemalloc import start
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -21,12 +22,12 @@ def load_model(datafile, model_path):
     )
 
     worlds = np.load(datafile)
-    rng.shuffle(worlds)
+    # rng.shuffle(worlds)
 
     config = {
         "device": device,
         "n_act": 5, 
-        "lr": 0.005,
+        "lr": 0.001,
         'l_i': 2,
         'l_h': 150,
         "l_q": 10,
@@ -41,34 +42,37 @@ def load_model(datafile, model_path):
 
     return worlds, net
 
-def test(data, net, viz):
+def test(worlds, net, viz):
     device = 'cpu' # 'cuda' # module
     with torch.no_grad():
         correct = 0
         success_distance = []
         average_distance = []
         # create new testing env (will perform badly if trained on only one env tho duh)
-        for world in data:
-            # pick a random free state for the start state
-            free = False
-            while free == False:
-                start_x, start_y = rng.integers(world.shape[0]), rng.integers(world.shape[1])
-                if world[start_x, start_y] == 0:
-                    free = True
-            goal_x, goal_y = np.where(world == 2)
-            coords = [start_x, start_y, goal_x[0], goal_y[0]] # torch.cat((start_x, start_y, goal_x, goal_y))
+        coords = np.empty((len(worlds), 4), dtype=int)
+        
+        for i in range(len(worlds)):
+            start_x, start_y = (np.where(worlds[i] == 3))
+            goal_x, goal_y = (np.where(worlds[i] == 2))
 
-            # create input view
-            reward_mapping = -1 * np.ones(world.shape) # -1 for freespace
-            reward_mapping[goal_x, goal_y] = 20 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
-            world[goal_x, goal_y] = 0 # remove goal from grid view
-            grid_view = np.reshape(world, (1, 1, world.shape[0], world.shape[1]))
-            reward_view = np.reshape(reward_mapping, (1, 1, world.shape[0], world.shape[1]))
-            input_view = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
-            
-            input_view = torch.tensor(input_view, dtype=torch.float, device=device) #.to(device)
-            coords = torch.tensor(coords, dtype=torch.int, device=device).reshape((1, 4)) # migh tbe inefficent since I make it a tensor earlier :| hm
+            temp = np.array([start_x[0], start_y[0], goal_x[0], goal_y[0]])
+            coords[i] = temp
+            reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
+        reward_mapping[range(len(worlds)), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
+        grid_view = worlds.copy()
+        grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
+        grid_view = np.reshape(worlds, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+        reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+        worlds = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
 
+        worlds = torch.tensor(worlds, dtype=torch.float, device=device)
+        coords = torch.tensor(coords, dtype=torch.int, device=device)
+
+        for world in zip(worlds, coords):
+            input_view = world[0].unsqueeze(0)
+            coords = world[1].unsqueeze(0)
+
+            start_x, start_y, goal_x, goal_y = coords[0]
 
             trajectory = net(input_view, coords, test=True) # max steps = size of world?
             # print(trajectory.shape)
@@ -76,7 +80,7 @@ def test(data, net, viz):
                 #print('success!')
                 success_distance.append(len(trajectory))
                 correct += 1
-            average_distance.append(abs(goal_x[0]-start_x + goal_y[0]-start_y))
+            average_distance.append(abs(goal_x-start_x + goal_y-start_y))
 
             if viz:
                 print('states:', [item for item in zip(trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())])
@@ -157,7 +161,7 @@ def test(data, net, viz):
                     plt.draw()
                 # if trajectory[-1, :, 4] == 1:
                     # print('failed?')
-    print('accuracy:', correct/len(data))
+    print('accuracy:', correct/len(worlds))
     print('success path length:', np.mean(success_distance))
     print('average path length:', np.mean(average_distance))
     
@@ -173,7 +177,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_8_20_2000.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-09-10-49-22_FINAL_10x10_32_x100.pt')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-09-16-49-16_VAL_6x6_16000.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)
