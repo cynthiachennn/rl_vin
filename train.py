@@ -33,7 +33,7 @@ def train(worlds, net, config, epochs, batch_size):
     grid_view = worlds.copy()
     grid_view[range(len(worlds)), coords[:, 0], coords[:, 1]] = 0 # remove start from grid view
     grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
-    grid_view = np.reshape(worlds, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+    grid_view = np.reshape(grid_view, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
     reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
     worlds = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
 

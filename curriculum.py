@@ -42,6 +42,7 @@ if __name__ == '__main__':
     for file in trainfiles:
         worlds = np.load(file)
         imsize = worlds[0].shape[0]
+        config['max_steps'] = 3 * imsize
         train(worlds, net, config, epochs, batch_size)
     
 

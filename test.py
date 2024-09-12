@@ -176,8 +176,8 @@ def main(datafile, model_path, viz):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_8_20_2000.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-12-01-56-04_FINAL_10x10_32_x200.pt')
+    parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_16_20_2000.npy')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-11-23-06-32_FINAL_18x18_32_x200.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)
