@@ -79,7 +79,7 @@ def train(worlds, net, config, epochs, batch_size):
             optimizer.step()
         save_train_loss.append(train_loss)
         print('explore time:', datetime.now() - explore_start)
-        net.module.exploration_prob = net.module.exploration_prob * 0.99 # no real basis for why this. i think ive seen .exp and other things
+        net.module.exploration_prob = max(net.module.exploration_prob * 0.99, 0.01) # no real basis for why this. i think ive seen .exp and other things
 
         val_loss = 0.0
         total_v = worlds_val.shape[0]/batch_size

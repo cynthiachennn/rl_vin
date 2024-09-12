@@ -63,12 +63,12 @@ def test(worlds, net, viz):
         grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
         grid_view = np.reshape(grid_view, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
         reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
-        worlds = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
+        input_view = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
 
-        worlds = torch.tensor(worlds, dtype=torch.float, device=device)
+        input_view = torch.tensor(input_view, dtype=torch.float, device=device)
         coords = torch.tensor(coords, dtype=torch.int, device=device)
 
-        for world in zip(worlds, coords):
+        for world in zip(input_view, coords):
             input_view = world[0].unsqueeze(0)
             coords = world[1].unsqueeze(0)
 
