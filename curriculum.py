@@ -31,6 +31,7 @@ def train(worlds, net, config, epochs, batch_size):
         reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
     reward_mapping[range(len(worlds)), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
     grid_view = worlds.copy()
+    grid_view[range(len(worlds)), coords[:, 0], coords[:, 1]] = 0 # remove start from grid view
     grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
     grid_view = np.reshape(worlds, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
     reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
@@ -126,7 +127,7 @@ if __name__ == '__main__':
     net = VIN(config).to(device)
     net = torch.nn.DataParallel(net)
 
-    trainfiles = ['dataset/train_worlds/small_4_4_20000.npy', 'dataset/train_worlds/sparse_8_20_20000.npy', 'dataset/train_worlds/sparse_16_20_20000.npy']
+    trainfiles = ['dataset/train_worlds/small_4_4_20000.npy', 'dataset/train_worlds/sparse_16_20_20000.npy']
     epochs = 200
     batch_size = 32
     for file in trainfiles:
@@ -135,6 +136,6 @@ if __name__ == '__main__':
         train(worlds, net, config, epochs, batch_size)
     
 
-    testfile = 'dataset/test_worlds/sparse_16_20_20000.npy'
+    testfile = 'dataset/test_worlds/sparse_16_20_2000.npy'
     worlds_test = np.load(testfile)
     test(worlds_test, net, viz=False)

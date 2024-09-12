@@ -31,6 +31,7 @@ def train(worlds, net, config, epochs, batch_size):
         reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
     reward_mapping[range(len(worlds)), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
     grid_view = worlds.copy()
+    grid_view[range(len(worlds)), coords[:, 0], coords[:, 1]] = 0 # remove start from grid view
     grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
     grid_view = np.reshape(worlds, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
     reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))

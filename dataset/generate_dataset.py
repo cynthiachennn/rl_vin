@@ -41,7 +41,7 @@ class SmallMap(MapGenerator):
 
 def main(n_envs=1024, size=8, density=20, scale=2, tile=4, type='sparse'):
     # REMEMBER NO np.tile for TEST WORLDS !!!!!!
-    save_path = f'dataset/train_worlds/{type}_{size}_{density}_{n_envs}' # uhhh
+    save_path = f'dataset/train_worlds/{type}_{size}_{density}_{n_envs}x{tile}' # uhhh
 
     if type == 'sparse':
         maps = SparseMap.genMaps(num_maps=n_envs, map_side_len=size, obstacle_percent=density, scale=scale, tile=tile)

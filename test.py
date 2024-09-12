@@ -36,7 +36,7 @@ def load_model(datafile, model_path):
 
     net = VIN(config).to(device)
     net = torch.nn.DataParallel(net)
-    net.load_state_dict(torch.load(model_path))
+    net.load_state_dict(torch.load(model_path, map_location=device))
     net.eval()
 
     return worlds, net
@@ -59,8 +59,9 @@ def test(worlds, net, viz):
             reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
         reward_mapping[range(len(worlds)), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
         grid_view = worlds.copy()
+        grid_view[range(len(worlds)), coords[:, 0], coords[:, 1]] = 0 # remove start from grid view
         grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
-        grid_view = np.reshape(worlds, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+        grid_view = np.reshape(grid_view, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
         reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
         worlds = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
 
@@ -145,8 +146,8 @@ def test(worlds, net, viz):
                 plt.show()
 
                 ax2.imshow(grid[0].T, cmap='Greys')
-                ax2.plot(start_x, start_y, 'ro')
-                ax2.plot(goal_x, goal_y, 'go')
+                # ax2.plot(start_x, start_y, 'ro')
+                # ax2.plot(goal_x, goal_y, 'go')
                 ax1.plot(start_x * 3 + 1, start_y * 3 + 1, 'ro')
                 ax1.plot(goal_x * 3 + 1, goal_y * 3 + 1, 'go')
                 plt.draw()
@@ -176,7 +177,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_8_20_2000.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-11-10-57-13_VAL_10x10_16000.pt')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-12-01-56-04_FINAL_10x10_32_x200.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)
