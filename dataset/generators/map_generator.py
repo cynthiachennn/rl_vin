@@ -22,9 +22,13 @@ class MapGenerator():
             dfs(goal_r, goal_c)
             if np.mean(visited) > connection_percent_th / 100:
                 break
-        map[np.where(visited == False)] = 1 # removed the connection percent thing thoooo
+        map[np.where(visited == False)] = 1
         map[goal_r, goal_c] = 2
-        
+
+        return map
+
+    @staticmethod
+    def genStart(map):
         room_xy = np.where(map == 0)
         k = np.random.choice(room_xy[0].size)
         start_r = room_xy[0][k]

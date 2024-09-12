@@ -1,4 +1,5 @@
 import sys
+from matplotlib.pyplot import grid
 import numpy as np
 import argparse
 import pickle
@@ -20,9 +21,9 @@ class SparseMap(MapGenerator):
                 large_layout[ : , r * scale : (r + 1) * scale, c * scale : (c + 1) * scale] = layout[:, r, c].reshape(-1, 1, 1) 
         obstacle_maps = np.ones([num_maps, map_side_len + 2, map_side_len + 2], dtype = np.uint)
         obstacle_maps [:, 1 : -1 , 1 : -1] = large_layout
-        np.tile(obstacle_maps, (tile, 1, 1))
-
-        maps = [SparseMap.genGoal(grid) for grid in obstacle_maps]
+        maps = np.array([SparseMap.genGoal(grid) for grid in obstacle_maps])
+        np.tile(maps, (tile, 1, 1))
+        maps = [SparseMap.genStart(grid) for grid in maps]
         return maps
     
 class SmallMap(MapGenerator):
@@ -36,7 +37,9 @@ class SmallMap(MapGenerator):
         obstacle_maps = np.ones([num_maps, map_side_len + 2, map_side_len + 2], dtype = np.uint)
         obstacle_maps [:, 1 : -1 , 1 : -1] = small_maps
         np.tile(obstacle_maps, (tile, 1, 1))
-        maps = [SmallMap.genGoal(grid) for grid in obstacle_maps]
+        maps = np.array([SmallMap.genGoal(grid) for grid in obstacle_maps])
+        np.tile(maps, (tile, 1, 1))
+        maps = [SmallMap.genStart(grid) for grid in maps]
         return maps
 
 def main(n_envs=1024, size=8, density=20, scale=2, tile=4, type='sparse'):
@@ -57,8 +60,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=20000)
-    parser.add_argument("--size", "-s", type=int, help="side length of map", default=6)
-    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=9)
+    parser.add_argument("--size", "-s", type=int, help="side length of map", default=4)
+    parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=4)
     parser.add_argument("--scale", "-sc", type=int, help="scaling factor", default=1)
     parser.add_argument("--tile", '-r', type=int, help="n times gridworld is repeated with diff. initial states", default=4)
     parser.add_argument("--type", "-t", type=str, help="type of environment", default="small")
