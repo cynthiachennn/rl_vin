@@ -139,7 +139,7 @@ def main(trainfile, testfile, epochs, batch_size):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--trainfile', '-train', default='dataset/train_worlds/small_4_4_20000.npy')
+    parser.add_argument('--trainfile', '-train', default='dataset/train_worlds/small_4_4_20000x4.npy')
     parser.add_argument('--testfile', '-test', default='dataset/test_worlds/small_4_4_2000.npy')
     parser.add_argument('--epochs', '-e', default=400)
     parser.add_argument('--batch_size', '-b', default=32)

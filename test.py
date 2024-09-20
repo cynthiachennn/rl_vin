@@ -74,7 +74,7 @@ def test(worlds, net, viz):
 
             start_x, start_y, goal_x, goal_y = coords[0]
 
-            trajectory = net(input_view, coords, test=True) # max steps = size of world?
+            logits, trajectory = net(input_view, coords, test=True) # max steps = size of world?
             # print(trajectory.shape)
             if trajectory[-1, :, 4] == 2:
                 #print('success!')
@@ -99,10 +99,10 @@ def test(worlds, net, viz):
                 plt.colorbar()
 
 
-                # for i in range(10):
-                #     fig, ax = plt.subplots()
-                #     plt.imshow(net.module.q.weight[i, 0], cmap='Greens')
-                #     plt.colorbar()
+                for i in range(10):
+                    fig, ax = plt.subplots()
+                    plt.imshow(net.module.q.weight[i, 0], cmap='Greens')
+                    plt.colorbar()
 
                 # # show max of q val in actual spot ??
                 # fig, ax = plt.subplots()
@@ -121,35 +121,36 @@ def test(worlds, net, viz):
                 # plot the value mapping i guess???
                 actiondict = ['right', 'up', 'left', 'down', 'stay']
                 fig, (ax1, ax2) = plt.subplots(1, 2)
-
+                
+                # this is to highlight each optimal action + 
                 grid = input_view[:, 0]
-                q_viz = torch.zeros((grid.shape[1] * 3, grid.shape[2] * 3))
-                maxes = [[], []]
+                # q_viz = torch.zeros((grid.shape[1] * 3, grid.shape[2] * 3))
+                q_max = torch.zeros((grid.shape[1], grid.shape[2]))
                 for r in range(grid.shape[1]):
                     for c in range(grid.shape[2]):
                         qact = net.module.fc(q[:, :, r, c])[0]
                         maxact = torch.argmax(qact)
-                        for action in range(net.module.config['n_act']):
-                            r_shift, c_shift = net.module.actions[action]
-                            q_viz[r * 3 + 1 + r_shift][c * 3 + 1 + c_shift] = qact[action]
-                            if action == maxact:
-                                ax1.add_patch(Rectangle((r * 3 + 1 + r_shift - 0.5, c * 3 + 1 + c_shift - 0.5), 1, 1, fill=False, edgecolor='red'))
-                                maxes[0].append(r * 3 + 1 + r_shift)
-                                maxes[1].append(c * 3 + 1 + c_shift)
-
+                        q_max[r, c] = qact[maxact]
+                        # for action in range(net.module.config['n_act']):
+                        #     r_shift, c_shift = net.module.actions[action]
+                        #     q_viz[r * 3 + 1 + r_shift][c * 3 + 1 + c_shift] = qact[action]
+                        #     if action == maxact:
+                        #         ax1.add_patch(Rectangle((r * 3 + 1 + r_shift - 0.5, c * 3 + 1 + c_shift - 0.5), 1, 1, fill=False, edgecolor='red'))
+                        #         maxes[0].append(r * 3 + 1 + r_shift)
+                        #         maxes[1].append(c * 3 + 1 + c_shift)
                 # plot qvalues 
-                q_viz = q_viz.detach().numpy()
-                
+                # q_viz = q_viz.detach().numpy()    
                 # fig.suptitle(f'epoch: {epoch}')
-                ax1.imshow(q_viz.T, cmap='viridis')
+                # ax1.imshow(q_viz.T, cmap='viridis')
                 # plt.colorbar()
                 plt.show()
-
+                ax1.imshow(q_max.T, cmap='viridis')
+                #
                 ax2.imshow(grid[0].T, cmap='Greys')
-                # ax2.plot(start_x, start_y, 'ro')
-                # ax2.plot(goal_x, goal_y, 'go')
-                ax1.plot(start_x * 3 + 1, start_y * 3 + 1, 'ro')
-                ax1.plot(goal_x * 3 + 1, goal_y * 3 + 1, 'go')
+                ax2.plot(start_x, start_y, 'ro')
+                ax2.plot(goal_x, goal_y, 'go')
+                # ax1.plot(start_x * 3 + 1, start_y * 3 + 1, 'ro')
+                # ax1.plot(goal_x * 3 + 1, goal_y * 3 + 1, 'go')
                 plt.draw()
                 plt.waitforbuttonpress()
 
@@ -177,7 +178,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_16_20_2000.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-11-23-06-32_FINAL_18x18_32_x200.pt')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-13-08-15-37_FINAL_18x18_25.6_x200.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)
