@@ -31,7 +31,7 @@ def main(trainfile, testfile, epochs, batch_size):
 
     config = {
         "n_act": 5, 
-        "lr": 0.005,
+        "lr": 0.001,
         'l_i': 2,
         'l_h': 150,
         "l_q": 10,
@@ -42,8 +42,9 @@ def main(trainfile, testfile, epochs, batch_size):
     net = VIN(config).to(device)
     net = torch.nn.DataParallel(net)
 
-    net.load_state_dict(torch.load('saved_models/2024-09-10-18-20-26_FINAL_6x6_32_x400.pt'))
+    net.load_state_dict(torch.load('saved_models/2024-09-12-18-36-43_FINAL_10x10_25.6_x200.pt'))
 
+    net.module.exploration_prob = 0.8 # maybe reset the exploration prob hmm
     train(worlds, net, config, epochs, batch_size)
     test(worlds_test, net, viz=False)
 
@@ -51,8 +52,8 @@ def main(trainfile, testfile, epochs, batch_size):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--trainfile', '-train', default='dataset/train_worlds/sparse_8_20_20000.npy')
-    parser.add_argument('--testfile', '-test', default='dataset/test_worlds/sparse_8_20_2000.npy')
+    parser.add_argument('--trainfile', '-train', default='dataset/train_worlds/sparse_16_20_20000x4.npy')
+    parser.add_argument('--testfile', '-test', default='dataset/test_worlds/sparse_16_20_2000.npy')
     parser.add_argument('--epochs', '-e', default=200)
     parser.add_argument('--batch_size', '-b', default=32)
     args = parser.parse_args()

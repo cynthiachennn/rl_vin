@@ -46,7 +46,7 @@ class VIN(nn.Module):
         # maybe track the evolution of q_value
         state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
         self.rng = np.random.default_rng(9) ## < idk
-        device = 'cpu'  # input_view.get_device()   ### module
+        device = input_view.get_device()   ### module
         batch_size = input_view.shape[0]
         trajectory = torch.empty(size=(0, batch_size, 5), dtype=torch.int, device=device)
         logitsList = torch.empty(size=(0, batch_size, len(self.actions)), device=device)
@@ -147,7 +147,7 @@ class VIN(nn.Module):
         return logits, action
 
     def move(self, input_view, actions, state_x, state_y):
-        device = 'cpu' #input_view.get_device() ## this is so redundant ahh
+        device = input_view.get_device() ## this is so redundant ahh #module
         grid, reward = input_view[:, 0], input_view[:, 1]
         action = [self.actions[action] for action in actions]
         action = torch.tensor(action, dtype=torch.int, device=device)

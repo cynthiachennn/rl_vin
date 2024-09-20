@@ -77,11 +77,15 @@ def test(worlds, net, viz):
             logits, trajectory = net(input_view, coords, test=True) # max steps = size of world?
             # print(trajectory.shape)
             if trajectory[-1, :, 4] == 2:
-                #print('success!')
+                # print('success!')
                 success_distance.append(len(trajectory))
+                # print('states:', [item for item in zip(trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())])
+                # print('actions:', trajectory[:, :, 2].flatten().tolist())
                 correct += 1
             average_distance.append(abs(goal_x-start_x + goal_y-start_y))
-
+            # print('states:', [item for item in zip(trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())])
+            # print('actions:', trajectory[:, :, 2].flatten().tolist())
+            
             if viz:
                 print('states:', [item for item in zip(trajectory[:, :, 0].flatten().tolist(), trajectory[:, :, 1].flatten().tolist())])
                 print('actions:', trajectory[:, :, 2].flatten().tolist())

@@ -18,22 +18,19 @@ def train(worlds, net, config, epochs, batch_size):
     print(log_datetime)
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
-    device = 'cpu' #net.output_device # module
-
-    # want the starts for validation to stay the same so i guess I gotta calculate it now ? 
+    device = net.output_device # module
+    
     coords = np.empty((len(worlds), 4), dtype=int)
     for i in range(len(worlds)):
         start_x, start_y = (np.where(worlds[i] == 3))
         goal_x, goal_y = (np.where(worlds[i] == 2))
-
-        temp = np.array([start_x[0], start_y[0], goal_x[0], goal_y[0]])
-        coords[i] = temp
+        coords[i] = np.array([start_x[0], start_y[0], goal_x[0], goal_y[0]])
         reward_mapping = -1 * np.ones(worlds.shape) # -1 for freespace
     reward_mapping[range(len(worlds)), coords[:, 2], coords[:, 3]] = 10 # what value at goal? also if regenerating goals for each world then i'd need to redo this for each goal/trajectory.
     grid_view = worlds.copy()
     grid_view[range(len(worlds)), coords[:, 0], coords[:, 1]] = 0 # remove start from grid view
     grid_view[range(len(worlds)), coords[:, 2], coords[:, 3]] = 0 # remove goal from grid view
-    grid_view = np.reshape(grid_view, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
+    grid_view = np.reshape(grid_view, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))  #unsqueeze(1)
     reward_view = np.reshape(reward_mapping, (len(worlds), 1, worlds.shape[1], worlds.shape[2]))
     worlds = np.concatenate((grid_view, reward_view), axis=1) # inlc empty 1 dim
 
@@ -125,7 +122,7 @@ def main(trainfile, testfile, epochs, batch_size):
         'l_h': 150,
         "l_q": 10,
         "k": 20,
-        "max_steps": 50,
+        "max_steps": imsize * imsize * 2,
     }
 
     net = VIN(config).to(device)
@@ -135,7 +132,7 @@ def main(trainfile, testfile, epochs, batch_size):
 
     test(worlds_test, net, viz=False)
 
-
+    
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
