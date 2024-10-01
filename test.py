@@ -4,7 +4,7 @@ from matplotlib.patches import Rectangle
 import torch
 import argparse
 
-from model import VIN
+from model_nofc import VIN
 from domains.Worlds import World
 
 rng = np.random.default_rng(9)
@@ -103,7 +103,7 @@ def test(worlds, net, viz):
                 plt.colorbar()
 
 
-                for i in range(10):
+                for i in range(5): #nofc
                     fig, ax = plt.subplots()
                     plt.imshow(net.module.q.weight[i, 0], cmap='Greens')
                     plt.colorbar()
@@ -132,7 +132,8 @@ def test(worlds, net, viz):
                 q_max = torch.zeros((grid.shape[1], grid.shape[2]))
                 for r in range(grid.shape[1]):
                     for c in range(grid.shape[2]):
-                        qact = net.module.fc(q[:, :, r, c])[0]
+                        # qact = net.module.fc(q[:, :, r, c])[0]
+                        qact = q[:, :, r, c][0]
                         maxact = torch.argmax(qact)
                         q_max[r, c] = qact[maxact]
                         # for action in range(net.module.config['n_act']):
@@ -182,7 +183,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_16_20_2000.npy')
-    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-13-08-15-37_FINAL_18x18_25.6_x200.pt')
+    parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-21-14-29-57_FINAL_10x10_32_x200.pt')
     parser.add_argument('--viz', '-v', action='store_true')
     args = parser.parse_args()
     main(args.datafile, args.model_path, args.viz)

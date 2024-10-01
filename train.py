@@ -18,7 +18,7 @@ def train(worlds, net, config, epochs, batch_size):
     print(log_datetime)
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
-    device = net.output_device # module
+    device = 'cpu' net.output_device # module
     
     coords = np.empty((len(worlds), 4), dtype=int)
     for i in range(len(worlds)):

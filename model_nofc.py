@@ -31,25 +31,24 @@ class VIN(nn.Module):
             bias=False)
         self.q = nn.Conv2d(
             in_channels=1,
-            out_channels=config['l_q'],
+            out_channels=len(self.actions),
             kernel_size=(3, 3),
             stride=1,
             padding=1,
             bias=False)
 
-        self.fc = nn.Linear(in_features=config['l_q'], out_features=len(self.actions), bias=False)
+        # self.fc = nn.Linear(in_features=config['l_q'], out_features=len(self.actions), bias=False)
         self.w = Parameter(
-            torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
+            torch.zeros(len(self.actions), 1, 3, 3), requires_grad=True)
         self.sm = nn.Softmax(dim=1)
 
     def forward(self, input_view, coords, test=False):
         # maybe track the evolution of q_value
         state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
         self.rng = np.random.default_rng(9) ## < idk
-        device = self.config['device'] #input_view.get_device()   ### module
+        device = self.config['device'] ### module
         batch_size = input_view.shape[0]
         trajectory = torch.empty(size=(0, batch_size, 5), dtype=torch.int, device=device)
-        logitsList = torch.empty(size=(0, batch_size, len(self.actions)), device=device)
         total_steps = 0
         done = torch.ones(batch_size, device=device)
         r, v = self.process_input(input_view)
@@ -71,15 +70,13 @@ class VIN(nn.Module):
             experience = torch.vstack((state_x, state_y, action, reward, done)).transpose(0, 1).reshape((1, batch_size, 5))
             trajectory = torch.cat((trajectory, experience))
             state_x, state_y = next_x, next_y
-            if test == True:
-                logitsList = torch.cat((logitsList, logits.unsqueeze(0)))
             
             # print('states', state_x[0:5], state_y[0:5])
             total_steps += 1
         
         trajectory = trajectory.to(torch.int) # shape: [batch_size, n_steps ,5]
 
-        if test is False: # wait if i have the trajectory value correspond to a state mapping instead of an "episode" i can overwrite the most recent q_target for each state which would make the most sense... but wahtever.....
+        if test is False:
             trajectory[:, :, 3] = trajectory[:, :, 3] * trajectory[:, :, 4] # set reward past done to 0 hopefully ?
             q_target = [torch.sum(trajectory[i:, range(batch_size), 3], dim=0) * 0.2 for i in range(trajectory.shape[0])]
             q_target = torch.stack(q_target).to(device).to(torch.float) # q_target.shape = [n_episodes, batch_size]
@@ -112,7 +109,7 @@ class VIN(nn.Module):
             return torch.stack((pred_values, target_values))
         
         if test is True:
-            return logitsList, trajectory
+            return 0, trajectory
     
     def process_input(self, input_view):
         h = self.h(input_view)  # Intermediate output
@@ -142,12 +139,13 @@ class VIN(nn.Module):
         batch_sz, l_q, _, _ = q.size()
         # q_out = q[torch.arange(batch_sz), :, state_x.long(), state_y.long()].view(batch_sz, l_q)
         q_out = q[torch.arange(batch_sz), :, state_x, state_y].view(batch_sz, l_q)
-        logits = self.fc(q_out)  # q_out to actions
+        # logits = self.fc(q_out)  # q_out to actions
+        logits = q_out
         action = torch.argmax(logits, dim=1) # orignal action has nn.softmax, which i could np.choice with p=action to choose from distribution instead ? 
         return logits, action
 
     def move(self, input_view, actions, state_x, state_y):
-        device = self.config['device'] # input_view.get_device() ## this is so redundant ahh #module
+        device = self.config['device'] ## this is so redundant ahh #module
         grid, reward = input_view[:, 0], input_view[:, 1]
         action = [self.actions[action] for action in actions]
         action = torch.tensor(action, dtype=torch.int, device=device)
