@@ -11,10 +11,9 @@ class VIN(nn.Module):
     def __init__(self, config):
         super(VIN, self).__init__()
         self.config = config
-        self.exploration_prob = 1 # start with only exploring
-        # self.rng = np.random.default_rng() # should i pass this in... ? ..
+        self.exploration_prob = 1
         self.actions = [[0, 1], [-1, 0], [0, -1], [1,0], [0, 0]] # ["right", "up", "left", "down", "stay"]
-
+        self.rng = np.random.default_rng(9) ## < idk
         self.h = nn.Conv2d(
             in_channels=config['l_i'],
             out_channels=config['l_h'],
@@ -42,10 +41,9 @@ class VIN(nn.Module):
             torch.zeros(config['l_q'], 1, 3, 3), requires_grad=True)
         self.sm = nn.Softmax(dim=1)
 
-    def forward(self, input_view, coords, test=False):
+    def forward(self, input_view, coords, mode='rl'):
         # maybe track the evolution of q_value
         state_x, state_y, goal_x, goal_y = torch.transpose(coords, 0, 1)
-        self.rng = np.random.default_rng(9) ## < idk
         device = self.config['device'] #input_view.get_device()   ### module
         batch_size = input_view.shape[0]
         trajectory = torch.empty(size=(0, batch_size, 5), dtype=torch.int, device=device)
@@ -54,33 +52,28 @@ class VIN(nn.Module):
         done = torch.ones(batch_size, device=device)
         r, v = self.process_input(input_view)
         q = self.value_iteration(r, v)
-        
         while torch.any(done == 1) and total_steps < self.config['max_steps']:
-            if test is False:
+            if mode == 'rl': # only explore if training rl
                 if self.rng.random() < self.exploration_prob:
                     action = torch.tensor(self.rng.choice(len(self.actions), batch_size), device=device)
                 else:
                     logits, action = self.get_action(q, state_x, state_y)
-                    # print(action)
-            else: # test = true means always follow policy
+            else:
                 logits, action = self.get_action(q, state_x, state_y)
             next_x, next_y, reward = self.move(input_view, action, state_x, state_y)
-            # done = 0 means goal has been reached, weird notation because i need to disregard values after reaching the goal
-            done = done * torch.where(done == 2, 0, 1) # if in the LAST STEP, the agent reached the goal, done = 2; that means from now ON, done = 0/mark that goal is previously reached
-            done = done * torch.where(((next_x == goal_x) & (next_y == goal_y)), 2, 1) # # if we just reached the goal at this step, set done = 2 so we can write that down, and then in the next cycle done will be reset to 0
+            # done = 0 means goal has been reached
+            done = done * torch.where(done == 2, 0, 1)
+            done = done * torch.where(((next_x == goal_x) & (next_y == goal_y)), 2, 1)
             experience = torch.vstack((state_x, state_y, action, reward, done)).transpose(0, 1).reshape((1, batch_size, 5))
             trajectory = torch.cat((trajectory, experience))
             state_x, state_y = next_x, next_y
-            if test == True:
+            if mode == 'expert':
                 logitsList = torch.cat((logitsList, logits.unsqueeze(0)))
-            
-            # print('states', state_x[0:5], state_y[0:5])
             total_steps += 1
-        
-        trajectory = trajectory.to(torch.int) # shape: [batch_size, n_steps ,5]
+        trajectory = trajectory.to(torch.int)
 
-        if test is False: # wait if i have the trajectory value correspond to a state mapping instead of an "episode" i can overwrite the most recent q_target for each state which would make the most sense... but wahtever.....
-            trajectory[:, :, 3] = trajectory[:, :, 3] * trajectory[:, :, 4] # set reward past done to 0 hopefully ?
+        if mode == 'rl':
+            trajectory[:, :, 3] = trajectory[:, :, 3] * trajectory[:, :, 4] # set reward past done to 0
             q_target = [torch.sum(trajectory[i:, range(batch_size), 3], dim=0) * 0.2 for i in range(trajectory.shape[0])]
             q_target = torch.stack(q_target).to(device).to(torch.float) # q_target.shape = [n_episodes, batch_size]
             pred_values = torch.empty((0, batch_size, len(self.actions)), device=device) # [episodes, batch_size, n_actions]
@@ -89,29 +82,17 @@ class VIN(nn.Module):
                 q_pred, _ = self.get_action(q, state_x, state_y)
                 pred_values = torch.cat((pred_values, q_pred.unsqueeze(0)))
             target_values = torch.clone(pred_values)
-            # target_values[range(target_values.shape[0]):, range(batch_size), trajectory[range(trajectory.shape[0]), range(batch_size), 2]] = torch.Tensor(q_target).to(device) # not sure if .to(device) is necessary
-            # this part is weird chatgpt magic but i think it works...
+            # get target values based on the state in that episode
             indices = trajectory[:, :, 2]
             batch_indices = torch.arange(target_values.size(0)).view(-1, 1).expand_as(indices)
             column_indices = torch.arange(target_values.size(1)).expand_as(indices)
             target_values[batch_indices, column_indices, indices] = q_target
-            # einsum feels like black magic but I actually think this works/makes sense
-            pred_values = torch.einsum('eba,eb->eba', [pred_values, trajectory[:, :, 4]])
+            pred_values = torch.einsum('eba,eb->eba', [pred_values, trajectory[:, :, 4]]) # for ones that are not past Done, set predicted value... ?
             target_values = torch.einsum('eba,eb->eba', [target_values, trajectory[:, :, 4]]) 
-            
-            # ok i want to compare pred and target
-            # for each interaction in a batch, and each world in a batch, there should be a corresponding pred/target
-    
-            # print(pred_values.shape)
-            # for episode in range(trajectory.shape[0]):
-            #     for world in range(trajectory.shape[1]):
-            #         if (trajectory[episode, world, 4] == 1):
-            #             print(f'e{episode} w{world} pred: ', pred_values[episode, world].tolist())
-            #             print(f'e{episode} w{world} targ: ', target_values[episode, world].tolist())
-
             return torch.stack((pred_values, target_values))
-        
-        if test is True:
+        if mode == 'test':
+            return trajectory
+        if mode == 'expert':
             return logitsList, trajectory
     
     def process_input(self, input_view):
