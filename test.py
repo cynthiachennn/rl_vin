@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import argparse
 
-from model_nofc import VIN
+from model import VIN
 
 rng = np.random.default_rng(9)
 
@@ -39,7 +39,7 @@ def load_model(datafile, model_path):
 
 def test(worlds, net):
     device = 'cpu' # 'cuda' # module
-    net.config['max_steps'] = worlds.shape[1] * worlds.shape[2]
+    net.module.config['max_steps'] = worlds.shape[1] * worlds.shape[2]
     with torch.no_grad():
         correct = 0
         success_distance = []
@@ -91,7 +91,7 @@ def main(datafile, model_path):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_16_20_2000.npy')
+    parser.add_argument('--datafile', '-d', type=str, default='dataset/test_worlds/sparse_4_4_2000.npy')
     parser.add_argument('--model_path', '-m', type=str, default='saved_models/2024-09-21-14-29-57_FINAL_10x10_32_x200.pt')
     args = parser.parse_args()
     main(args.datafile, args.model_path)

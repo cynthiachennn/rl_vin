@@ -81,7 +81,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_envs", "-ne", type=int, help="number of environments", default=2000)
     parser.add_argument("--size", "-s", type=int, help="side length of map", default=4)
-    parser.add_argument("--generator", "-g", type=str, help="type of environment", default="sparse")
+    parser.add_argument("--generator", "-g", type=str, help="type of environment", default="small")
     parser.add_argument("--density", "-d", type=int, help="percent/num of obstacles", default=4)
     parser.add_argument("--reps", '-r', type=int, help="n times gridworld is repeated with diff. initial states", default=1)
     parser.add_argument("--train", '-t', type=bool, help="train or test", default=False)

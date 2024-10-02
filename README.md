@@ -2,7 +2,7 @@
 RL implementation of the Value Iteration Network architecture described in 
 [Value Iteration Networks](https://arxiv.org/abs/1602.02867), based on the
 [pytorch implementation](https://github.com/kentsommer/pytorch-value-iteration-networks/tree/master?tab=readme-ov-file) 
-by [@kentsommer](https://github.com/kentsommer/).
+by [@kentsommer](https://github.com/kentsommer/). Our personal interpretations of dataset generation and training regimine were made.
 
 # Requirements
 Exact requirements are listed in the `requirements.txt` file. `environment.yml` has also been included to list the directly installed dependencies.
@@ -20,6 +20,7 @@ To generate the train and test dataset, run `dataset/generate_dataset.py`. The a
 Sample datasets that were generated for the training and testing of this model are:
 
 Train sets: 4x4, 8x8, 16x16
+
 `python dataset/generate_dataset.py -ne 20000 -s 4 -g 'small' -d 4 -r 4 -t True`
 
 `python dataset/generate_dataset.py -ne 20000 -s 8 -g 'sparse' -d 20 -r 4 -t True`
@@ -28,6 +29,7 @@ Train sets: 4x4, 8x8, 16x16
 
 
 Test sets: 4x4, 8x8, 16x16
+
 `python dataset/generate_dataset.py -ne 2000 -s 4 -g 'small' -d 4 -r 1 -t False`
 
 `python dataset/generate_dataset.py -ne 2000 -s 8 -g 'sparse' -d 20 -r 1 -t False`
